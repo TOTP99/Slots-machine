@@ -1,8 +1,8 @@
 /* ============================================================
  * 背景音乐播放器（BGMusic）
- * 依赖：无（原生 <audio> + Web Audio API）。
- * 需在 slot-game.js 之前加载；横屏侧栏与存档读写全局单例 bgMusic。
- * 曲号/模式写入 localStorage（bgMusic*），与竖屏外部播放器同源共享。
+ * 依赖：无（原生 <audio> + Web Audio API 用于暂停淡出）。
+ * 需在 slot-game.js 之前加载；侧栏与存档读写全局单例 bgMusic。
+ * 曲号/模式写入 localStorage（bgMusic*）。
  * ============================================================ */
 
 // ---------- 背景音乐歌单清单 ----------
@@ -43,22 +43,12 @@ class BGMusic {
         ? savedNum
         : 1;
 
-    // Web Audio 分析：频谱 → 均衡条（声高 / 情绪 / 男女声区 / 乐器频段）
+    // Web Audio：MediaElementSource + GainNode，仅用于暂停淡出（避免爆音）
     this.ctx = null;
-    this.analyser = null;
     this._source = null;
     this._gain = null;
-    this._freqData = null;
     this._connected = false;
-
-    // 五频段平滑值：低音乐器 / 男声区 / 主旋律 / 女声区 / 高频空气
-    this.bands = [0, 0, 0, 0, 0];
-    this.energy = 0; // 整体响度 0~1
-    this.brightness = 0; // 频谱重心偏高→亮/兴奋；偏低→暖/沉稳
-    this.vocalBias = 0; // <0 偏男声区能量，>0 偏女声区
-    this._playing = false;
-    this._bandBins = null;
-    this._analyserFailed = false;
+    this._graphFailed = false;
 
     this.audio.addEventListener("ended", () => this._advance());
     this.audio.addEventListener("error", () => this._advance()); // 该编号文件缺失/加载失败，自动跳到下一个
@@ -106,43 +96,35 @@ class BGMusic {
     } catch (e) {}
   }
 
-  // 须在用户手势中调用。成功则走 Web Audio 分析；失败则保持原生 <audio> 出声
+  // 须在用户手势中调用。成功则接管到 Web Audio（Gain 淡出）；失败则保持原生 <audio> 出声
   ensureAnalyser() {
     if (this._connected) {
       this._resumeCtx();
       return true;
     }
-    if (this._analyserFailed) return false;
+    if (this._graphFailed) return false;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) {
-        this._analyserFailed = true;
+        this._graphFailed = true;
         return false;
       }
       if (!this.ctx) this.ctx = new AC();
       this._resumeCtx();
-      if (!this.analyser) {
-        this.analyser = this.ctx.createAnalyser();
-        this.analyser.fftSize = 256;
-        this.analyser.smoothingTimeConstant = 0.6;
-        this._freqData = new Uint8Array(this.analyser.frequencyBinCount);
-        this._rebuildBandBins();
-      }
       if (!this._source) {
         // 每个 <audio> 只能 createMediaElementSource 一次；之后必须经 destination 才能出声
         this._source = this.ctx.createMediaElementSource(this.audio);
-        // 用一个 GainNode 兜底：暂停/切歌时先做几十毫秒淡出，避免直接截断波形产生"啪"的爆音
+        // GainNode：暂停时先淡出几十毫秒，避免直接截断波形产生"啪"的爆音
         this._gain = this.ctx.createGain();
         this._gain.gain.value = 1;
-        this._source.connect(this.analyser);
         this._source.connect(this._gain);
         this._gain.connect(this.ctx.destination);
       }
       this._connected = true;
       return true;
     } catch (e) {
-      // 接管失败：不破坏原生播放，频谱走伪数据
-      this._analyserFailed = true;
+      // 接管失败：不破坏原生播放
+      this._graphFailed = true;
       this._connected = false;
       return false;
     }
@@ -160,114 +142,13 @@ class BGMusic {
     try {
       const p = this.audio.play();
       if (p && typeof p.catch === "function") {
-        p.catch(() => {
-          // 自动播放被拦截时不吞掉状态；下一次用户手势会再次尝试。
-          this._playing = false;
-        });
+        // 自动播放被拦截时静默；下一次用户手势会再次尝试
+        p.catch(() => {});
       }
-    } catch (e) {
-      this._playing = false;
-    }
-  }
-
-  // 预计算 Hz→bin 区间，避免每帧 floor/ceil
-  _rebuildBandBins() {
-    if (!this.analyser || !this.ctx) return;
-    const n = this.analyser.frequencyBinCount;
-    const binHz = this.ctx.sampleRate / this.analyser.fftSize;
-    // 低音/鼓 · 男声区 · 主旋律 · 女声区 · 高频空气
-    const ranges = [
-      [40, 120],
-      [120, 320],
-      [320, 1200],
-      [1200, 4000],
-      [4000, 12000],
-    ];
-    this._bandBins = ranges.map(([lo, hi]) => [
-      Math.max(0, Math.floor(lo / binHz)),
-      Math.min(n - 1, Math.ceil(hi / binHz)),
-    ]);
-  }
-
-  // 由场景按 ~30fps 调用：频谱 → 5 条 + 情绪指标
-  sampleSpectrum() {
-    const playing =
-      this.enabled &&
-      this.audio &&
-      !this.audio.paused &&
-      !this.audio.ended &&
-      this.audio.currentTime > 0;
-    this._playing = playing;
-
-    if (!playing) {
-      for (let i = 0; i < 5; i++) this.bands[i] *= 0.88;
-      this.energy *= 0.9;
-      this.brightness *= 0.92;
-      this.vocalBias *= 0.92;
-      return this.bands;
-    }
-
-    if (this._connected && this.analyser && this._freqData) {
-      this.analyser.getByteFrequencyData(this._freqData);
-      const data = this._freqData;
-      if (!this._bandBins) this._rebuildBandBins();
-      const bins = this._bandBins;
-
-      for (let b = 0; b < 5; b++) {
-        const a = bins[b][0];
-        const c = bins[b][1];
-        let sum = 0;
-        const count = c - a + 1;
-        for (let i = a; i <= c; i++) sum += data[i];
-        const avg = sum / count / 255;
-        // 软曲线近似 pow(x,0.85)，避免 Math.pow
-        let v = avg * 1.35;
-        if (v > 1) v = 1;
-        v = v * (0.85 + 0.15 * v);
-        this.bands[b] = this.bands[b] * 0.55 + v * 0.45;
-      }
-
-      const e =
-        (this.bands[0] +
-          this.bands[1] +
-          this.bands[2] +
-          this.bands[3] +
-          this.bands[4]) *
-        0.2;
-      this.energy = this.energy * 0.6 + e * 0.4;
-
-      const bright =
-        (this.bands[3] * 0.45 + this.bands[4] * 0.55) /
-        (this.bands[0] * 0.5 + this.bands[1] * 0.3 + 0.15);
-      this.brightness =
-        this.brightness * 0.7 + (bright > 1.4 ? 1.4 : bright) * 0.3;
-
-      this.vocalBias =
-        this.vocalBias * 0.75 + (this.bands[3] - this.bands[1]) * 0.25;
-    } else {
-      // 无分析器：轻量伪频谱
-      const t = performance.now() * 0.001;
-      const pulse = 0.35 + 0.25 * Math.sin(t * 4.2);
-      const raw0 = pulse * (0.7 + 0.3 * Math.sin(t * 2.1));
-      const raw1 = pulse * (0.45 + 0.25 * Math.sin(t * 3.3 + 1));
-      const raw2 = pulse * (0.55 + 0.3 * Math.sin(t * 5.1 + 2));
-      const raw3 = pulse * (0.4 + 0.35 * Math.sin(t * 6.7 + 0.5));
-      const raw4 = pulse * (0.3 + 0.4 * Math.sin(t * 8.9 + 1.2));
-      this.bands[0] = this.bands[0] * 0.7 + raw0 * 0.3;
-      this.bands[1] = this.bands[1] * 0.7 + raw1 * 0.3;
-      this.bands[2] = this.bands[2] * 0.7 + raw2 * 0.3;
-      this.bands[3] = this.bands[3] * 0.7 + raw3 * 0.3;
-      this.bands[4] = this.bands[4] * 0.7 + raw4 * 0.3;
-      this.energy = this.energy * 0.7 + pulse * 0.3;
-      this.brightness = 0.5;
-      this.vocalBias = 0;
-    }
-
-    return this.bands;
+    } catch (e) {}
   }
 
   isPlaying() {
-    // 以真实 audio 状态为准，避免仅依赖采样缓存导致 UI/逻辑误判
     try {
       return (
         !!this.enabled &&
@@ -276,7 +157,7 @@ class BGMusic {
         !this.audio.ended
       );
     } catch (e) {
-      return !!this._playing;
+      return false;
     }
   }
 

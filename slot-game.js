@@ -40,10 +40,6 @@ class SlotGame extends Phaser.Scene {
           };
         }
 
-        preload() {
-          // 无需预加载留声机图
-        }
-
         create() {
           window.__slotGameScene = this;
           this.machineScaleGroup = this.add.container(0, 0);
@@ -132,7 +128,7 @@ class SlotGame extends Phaser.Scene {
         SlotGame.prototype.setControlActive = function(bg, txt, active) {
           const fill = active ? UI.activeFill : 0x1a140c;
           const top = this.shadeColor(fill, active ? 16 : 10);
-          const bottom = this.shadeColor(fill, active ? -8 : -8);
+          const bottom = this.shadeColor(fill, -8);
           const stroke = active ? UI.gold : UI.goldDim;
           const w = bg._btnW || 58;
           const h = bg._btnH || 28;
@@ -502,8 +498,6 @@ class SlotGame extends Phaser.Scene {
           const y = LAYOUT.paytableY;
           const w = LAYOUT.paytableW;
           const h = LAYOUT.paytableH;
-          const top = y - h / 2;
-          const bottom = y + h / 2;
 
           this.createPanel(x, y, w, h, 0x0c0a08, 0.96, this.focusHideGroup);
 

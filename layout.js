@@ -44,17 +44,13 @@ const GOLD = 0xffd700;
 // 否则第一次 hover 后手柄会永久停在 hover 用的过渡色上，回不到真正的默认色
 const LEVER_HANDLE_IDLE_FILL = 0x5c4010;
 
-// 注：以下仅保留实际被 slot-game.js 引用的键（panel/panelDeep/gold/goldDim/
-// goldBright/champagne/cream/textDark/activeFill）。原来还有 bg/bgWine/
-// bgGreen/creamHex/danger/emerald 六个键，全局搜索后确认从未被读取过，
-// 属于早期版本遗留的死配置，已一并清理。
+// 仅保留 slot-game.js 实际引用的键。
 const UI = {
   panel: 0x101714,
   panelDeep: 0x0b100e,
   gold: GOLD,
   goldDim: GOLD,
   goldBright: GOLD,
-  champagne: GOLD,
   cream: "#e8dcc0",
   textDark: "#17120a",
   activeFill: 0x8d6f32,
