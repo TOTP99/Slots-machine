@@ -1,4 +1,4 @@
-/* 万锦老虎机 — Phaser3 + config/layout/sound-fx/bg-music（需先加载） */
+/* SlotGame 主场景 */
 
 // ---------- 主场景 ----------
 class SlotGame extends Phaser.Scene {
@@ -31,8 +31,6 @@ class SlotGame extends Phaser.Scene {
 
           this.focusMode = false;
           this.focusHideGroup = [];
-          this.machineScaleGroup = null;
-          this.machineScaleAnchor = { x: 0, y: 0 };
 
           this.speedSettings = {
             NORMAL: { duration: 1700, interval: 40, step: 18 },
@@ -40,7 +38,7 @@ class SlotGame extends Phaser.Scene {
           };
         }
 
-        // 场景重启（横竖屏切换）时重置运行期状态；余额/下注等由 loadGameState 从存档恢复
+        // 场景重启时重置运行期状态
         init() {
           if (this.clockTimer) {
             clearInterval(this.clockTimer);
@@ -68,28 +66,23 @@ class SlotGame extends Phaser.Scene {
 
         create() {
           window.__slotGameScene = this;
-          this.machineScaleGroup = this.add.container(0, 0);
           this.createBackdrop();
           this.createHeader();
-          this.loadGameState(); // 读取本机浏览器存档：余额 / 下注 / 奖池
+          this.loadGameState();
           this.createPaytableButton();
           this.createMachine();
           this.createReels();
-          this.createBottomPanels(); // 含"上次获胜"格，四分播报屏统一在此创建
+          this.createBottomPanels();
           this.createRightControls();
-          this.machineScaleGroup.sort("depth");
-          this.createSettingsModal(); // 赔率 + 速度 / 自动五次 / 音效 设置弹窗
+          this.createSettingsModal();
           this.createKeyboardControls();
           this.createAmbientAnimations();
-          this.toggleFocusMode(true); // 默认进入「简」：藏左侧面板
+          this.toggleFocusMode(true); // 默认「简」
           this.updateDisplay();
         }
 
 }
 
-        // 径向背景：同心圆近似渐变（中心暖暗 → 边缘近黑，自带暗角）
-        // 背景：整张 Royale 底图（带三个透明转轴窗口），盖在转轴之上；
-        // 转轴与窗口底色都画在它下面（depth 更小）。
         SlotGame.prototype.createBackdrop = function() {
           this.add.image(0, 0, LAYOUT.bgKey).setOrigin(0).setDepth(10);
         };
@@ -111,7 +104,7 @@ class SlotGame extends Phaser.Scene {
           }
         };
 
-        SlotGame.prototype.createPanel = function(x, y, width, height, fill = UI.panel, alpha = 0.96, hideGroup = null, scaleGroup = null) {
+        SlotGame.prototype.createPanel = function(x, y, width, height, fill = UI.panel, alpha = 0.96, hideGroup = null) {
           const radius = Math.min(PANEL_RADIUS, height / 2, width / 2);
           const topColor = this.shadeColor(fill, 22);
           const bottomColor = this.shadeColor(fill, -16);
@@ -124,8 +117,6 @@ class SlotGame extends Phaser.Scene {
           this.drawGradientPanel(panel, width, height, radius, topColor, bottomColor, alpha, UI.gold, 1.4);
 
           if (hideGroup) hideGroup.push(glow, panel);
-          if (scaleGroup) scaleGroup.add([glow, panel]);
-
           return panel;
         };
 
@@ -144,7 +135,6 @@ class SlotGame extends Phaser.Scene {
           const J = LAYOUT.jackpot;
           const isPortrait = LAYOUT.key === "portrait";
 
-          // 横屏保留霓虹胶囊边框；竖屏去掉边框，只保留文字 + 星光（更干净）
           if (!isPortrait) {
             const pill = this.add.graphics().setPosition(J.x, J.y).setDepth(12);
             this.drawGradientPanel(pill, J.w, J.h, J.h / 2, 0x0a1838, 0x040a1c, 0.82, UI.neon, 2);
@@ -226,12 +216,10 @@ class SlotGame extends Phaser.Scene {
           this.refreshPlayPauseIcon();
         };
 
-        // 机身本体是底图；这里只补：转轴窗口底色 / 上下暗角 / 三条判奖线 / 边框呼吸光
         SlotGame.prototype.createMachine = function() {
           const L = LAYOUT;
           const F = L.frame;
 
-          // 边框呼吸描边（仅描边，无填充）
           this.machineGlow = this.add
             .rectangle(F.x, F.y, F.w, F.h)
             .setStrokeStyle(6, UI.neon, 1)
@@ -240,12 +228,10 @@ class SlotGame extends Phaser.Scene {
           L.reelWindows.forEach(([x0, x1]) => {
             const w = x1 - x0;
 
-            // 窗口底色（转轴在它上面、底图在转轴上面）
             const back = this.add.graphics().setDepth(1);
             back.fillGradientStyle(0x030817, 0x030817, 0x0a1a44, 0x0a1a44, 1);
             back.fillRect(x0, L.reelTop, w, L.reelH);
 
-            // 上下暗角，营造"凹进去"的玻璃感（在转轴之上、底图之下）
             const shade = this.add.graphics().setDepth(4);
             const band = L.reelH * 0.16;
             shade.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.6, 0.6, 0, 0);
@@ -253,7 +239,6 @@ class SlotGame extends Phaser.Scene {
             shade.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.6, 0.6);
             shade.fillRect(x0, L.reelBottom - band, w, band);
 
-            // 竖屏 5 行：最上 / 最下一行压暗，表示不在"三线"范围内
             if (L.dimOuterRows) {
               shade.fillStyle(0x000000, 0.42);
               shade.fillRect(x0, L.reelTop, w, L.rowH);
@@ -261,8 +246,7 @@ class SlotGame extends Phaser.Scene {
             }
           });
 
-          // 三条判奖线（仍是原逻辑：只有正中一条参与判奖，上下两条是装饰）
-          // 画在转轴容器之下（符号的半透明圆盘会把线"压"在后面），只在窗口范围内可见。
+          // 三条线：仅中间参与判奖
           const xL = L.reelWindows[0][0];
           const xR = L.reelWindows[L.reelWindows.length - 1][1];
           const lineW = xR - xL;
@@ -280,7 +264,6 @@ class SlotGame extends Phaser.Scene {
             .setDepth(2);
         };
 
-        // 转轴窗口的高亮描边：待机 2px 蓝色、转动 3px 亮青、大奖变粗变色
         SlotGame.prototype.setReelFrameStroke = function(reel, strokeWidth, strokeColor) {
           if (!reel || !reel.frame) return;
           const g = reel.frame;
@@ -358,8 +341,6 @@ class SlotGame extends Phaser.Scene {
           });
         };
 
-        // BALANCE / BET / LAST WIN 三块面板是底图的一部分（原文字已抹掉），这里只叠文字；
-        // 原来的"提示语"改放在面板下方的半透明胶囊里。
         SlotGame.prototype.createBottomPanels = function() {
           const P = LAYOUT.plates;
           const M = LAYOUT.msg;
@@ -398,7 +379,6 @@ class SlotGame extends Phaser.Scene {
           this.betValue = make(1, "BET", this.formatInt(this.bet));
           this.lastWinValue = make(2, "LAST WIN", this.formatInt(this.lastWin));
 
-          // BET 面板两端的 ◀ ▶：调整下注（与设置弹窗里的 BET 行是同一个 changeBet）
           const arrow = (x, glyph, delta) => {
             const t = this.add
               .text(x, P.y, glyph, {
@@ -424,7 +404,6 @@ class SlotGame extends Phaser.Scene {
           arrow(P.xs[1] - P.arrowDx, "◀", -this.betStep);
           arrow(P.xs[1] + P.arrowDx, "▶", this.betStep);
 
-          // 提示语胶囊
           const pill = this.add.graphics().setPosition(M.x, M.y).setDepth(12);
           this.drawGradientPanel(pill, M.w, M.h, M.h / 2, 0x0a1838, 0x040a1c, 0.62, UI.neon, 1.5);
 
@@ -644,11 +623,9 @@ class SlotGame extends Phaser.Scene {
           this.sidePlayPauseBtn.setText(bgMusic.isPlaying() ? "⏸️" : "▶️");
         };
 
-        // 右上：时钟 / 简繁开关（照旧）；拉杆：底图里抠出的球头 + 杆身，代码做下拉动画
         SlotGame.prototype.createRightControls = function() {
           const L = LAYOUT.lever;
 
-          // ---- 时钟 + 简/繁 开关：原 76×82 的按钮搭在 (855,165)，整体缩放后放到 clock.x/y ----
           this.createRightClockToggle(855);
           const ck = LAYOUT.clock;
           this.clockContainer = this.wrapInScaledContainer(
@@ -666,7 +643,6 @@ class SlotGame extends Phaser.Scene {
             855, 165, ck.x, ck.y, ck.k, 20,
           );
 
-          // ---- 拉杆 ----
           this.leverShaft = this.add
             .image(L.shaftX, L.baseY, LAYOUT.shaftKey)
             .setOrigin(0.5, 1)
@@ -689,10 +665,8 @@ class SlotGame extends Phaser.Scene {
             )
             .setDepth(13);
 
-          // 拉杆动画的进度对象：p=0 待机，p=1 拉到底
           this._leverTw = { p: 0 };
 
-          // 手（默认隐藏，从侧上方飞入抓住球头）
           this.leverHand = this.add
             .text(L.restX, L.restY, "✋", { fontSize: L.handFont + "px" })
             .setOrigin(0.35, 0.35)
@@ -700,13 +674,11 @@ class SlotGame extends Phaser.Scene {
             .setDepth(20)
             .setAngle(-25);
 
-          // 可点击热区
           this.leverHit = this.add
             .rectangle(L.hit.x, L.hit.y, L.hit.w, L.hit.h, 0x000000, 0.01)
             .setDepth(14)
             .setInteractive({ useHandCursor: true });
 
-          // 拉杆 / SPIN / 空格 统一：一点即转，转动中再点急停
           this.leverHit.on("pointerdown", () => {
             this.sfx.init();
             this.sfx.warmup();
@@ -724,7 +696,6 @@ class SlotGame extends Phaser.Scene {
           this.setLeverProgress(0);
         };
 
-        // 按进度摆放拉杆：球头沿杆下移并略放大，杆身随之缩短（模拟朝玩家拉下的透视）
         SlotGame.prototype.setLeverProgress = function(p) {
           const L = LAYOUT.lever;
           if (!this.leverBall || !this.leverShaft) return;
@@ -778,18 +749,15 @@ class SlotGame extends Phaser.Scene {
           this._clockBtnH = btnH;
           this._clockBtnR = btnRadius;
 
-          // 底层阴影：营造浮起的立体厚度
           this.rightClockShadow = this.add.graphics().setPosition(lx + 2, cy + 3);
           this.rightClockShadow.fillStyle(0x000000, 0.45);
           this.rightClockShadow.fillRoundedRect(
             -btnW / 2, -btnH / 2, btnW, btnH, btnRadius,
           );
 
-          // 主体：顶亮底暗的立体渐变 + 双层描边
           this.rightClockToggleBg = this.add.graphics().setPosition(lx, cy);
           this._drawClockButton3D(false);
 
-          // 顶部高光条（立体感）
           this.rightClockHighlight = this.add.graphics().setPosition(lx, cy);
           this.rightClockHighlight.fillStyle(0xffffff, 0.12);
           this.rightClockHighlight.fillRoundedRect(
@@ -829,7 +797,6 @@ class SlotGame extends Phaser.Scene {
 
           this.refreshModeLabel();
 
-          // 射线光晕层（按下时发射）
           this.rightClockRay = this.add.graphics().setPosition(lx, cy).setAlpha(0).setDepth(21);
 
           this.rightClockToggleHit = this.add
@@ -844,7 +811,6 @@ class SlotGame extends Phaser.Scene {
           });
           this.rightClockToggleHit.on("pointerdown", () => {
             this.sfx.click();
-            // 按下压缩立体感
             this.tweens.add({
               targets: [
                 this.rightClockToggleBg,
@@ -866,7 +832,6 @@ class SlotGame extends Phaser.Scene {
           });
         };
 
-        /** 立体时钟按钮：顶亮底暗 + 红金描边 */
         SlotGame.prototype._drawClockButton3D = function(hover) {
           const g = this.rightClockToggleBg;
           if (!g) return;
@@ -874,7 +839,6 @@ class SlotGame extends Phaser.Scene {
           const h = this._clockBtnH || 82;
           const r = this._clockBtnR || 14;
           g.clear();
-          // 底色渐变（深海军蓝 → 更深）
           g.fillGradientStyle(
             hover ? 0x1a2a4a : 0x121c36,
             hover ? 0x1a2a4a : 0x121c36,
@@ -883,15 +847,12 @@ class SlotGame extends Phaser.Scene {
             0.96,
           );
           g.fillRoundedRect(-w / 2, -h / 2, w, h, r);
-          // 外层红宝石描边
           g.lineStyle(hover ? 3.2 : 2.2, UI.ruby, 1);
           g.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
-          // 内层金线
           g.lineStyle(1, UI.gold, hover ? 0.85 : 0.55);
           g.strokeRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h - 6, Math.max(4, r - 3));
         };
 
-        /** 按下时钟键：向外发射短射线光晕 */
         SlotGame.prototype._burstClockRays = function(cx, cy) {
           const ray = this.rightClockRay;
           if (!ray) return;
@@ -909,7 +870,6 @@ class SlotGame extends Phaser.Scene {
             ray.lineTo(Math.cos(a) * len, Math.sin(a) * len);
             ray.strokePath();
           }
-          // 中心光晕圆
           ray.fillStyle(0xffd700, 0.35);
           ray.fillCircle(0, 0, 16);
           ray.fillStyle(0xffffff, 0.2);
@@ -946,7 +906,6 @@ class SlotGame extends Phaser.Scene {
           const children = [];
 
           const overlayKey = "settingsOverlayGradient";
-          // 横竖屏画布尺寸不同：场景重启时重画遮罩纹理
           if (this.textures.exists(overlayKey)) this.textures.remove(overlayKey);
           if (!this.textures.exists(overlayKey)) {
             const rt = this.textures.createCanvas(overlayKey, LAYOUT.width, LAYOUT.height);
@@ -969,7 +928,6 @@ class SlotGame extends Phaser.Scene {
           overlay.on("pointerdown", () => this.toggleSettingsModal(false));
           children.push(overlay);
 
-          // 外层金光晕：赌场霓虹氛围
           const modalGlow = this.add.graphics().setPosition(cx, cy);
           modalGlow.fillStyle(0xffd700, 0.06);
           modalGlow.fillRoundedRect(-(panelW + 18) / 2, -(panelH + 18) / 2, panelW + 18, panelH + 18, 26);
@@ -979,18 +937,13 @@ class SlotGame extends Phaser.Scene {
           modalGlow.strokeRoundedRect(-(panelW + 22) / 2, -(panelH + 22) / 2, panelW + 22, panelH + 22, 28);
           children.push(modalGlow);
 
-          // 弹窗主体：深酒红丝绒底 + 双层金边（赌场牌桌感）
           const panelVisual = this.add.graphics().setPosition(cx, cy);
-          // 丝绒深红 → 近黑
           panelVisual.fillGradientStyle(0x2a0a14, 0x2a0a14, 0x0c060a, 0x0c060a, 0.98);
           panelVisual.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 20);
-          // 外金边
           panelVisual.lineStyle(2.5, 0xffd700, 0.95);
           panelVisual.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 20);
-          // 内细金线
           panelVisual.lineStyle(1, 0xc9a227, 0.7);
           panelVisual.strokeRoundedRect(-panelW / 2 + 5, -panelH / 2 + 5, panelW - 10, panelH - 10, 16);
-          // 四角装饰菱形
           const corner = (ox, oy) => {
             panelVisual.fillStyle(0xffd700, 0.85);
             panelVisual.fillCircle(ox, oy, 3);
@@ -1004,7 +957,6 @@ class SlotGame extends Phaser.Scene {
           corner(panelW / 2 - inset, panelH / 2 - inset);
           children.push(panelVisual);
 
-          // 顶部赌场标题条
           const titleBar = this.add.graphics().setPosition(cx, top + 22);
           titleBar.fillGradientStyle(0x3d1520, 0x3d1520, 0x1a0a10, 0x1a0a10, 0.9);
           titleBar.fillRoundedRect(-140, -14, 280, 28, 8);
@@ -1049,7 +1001,6 @@ class SlotGame extends Phaser.Scene {
             ["Any pair", "×2"],
           ];
           const paySpacing = 40;
-          // 标题条占顶部约 40px，内容略下移；上下留白对称
           const contentSpan = (payRows.length - 1) * paySpacing;
           const payStart = top + 42 + (panelH - 52 - contentSpan) / 2;
           payRows.forEach((row, i) => {
@@ -1587,7 +1538,6 @@ class SlotGame extends Phaser.Scene {
             return;
           }
 
-          // 自动模式等非手动拉杆路径：若拉杆未下，补一段简短甩下动画
           if (this.leverState !== "down") {
             const LV = LAYOUT.lever;
             const tw = this._leverTw;
@@ -1765,7 +1715,6 @@ class SlotGame extends Phaser.Scene {
             item.txt.setText(randomSymbol.label);
             item.txt.setColor(randomSymbol.color);
 
-            // 非中奖行的符号淡入落位，避免"瞬间贴图切换"的生硬感
             if (i !== N) {
               item.txt.setAlpha(0.35);
               this.tweens.add({
@@ -2214,7 +2163,6 @@ class SlotGame extends Phaser.Scene {
             return;
           }
 
-          // 拉杆正在下落动画中，忽略重复点击
           if (this.leverState === "down") return;
 
           this.pullLever(true);
@@ -2273,7 +2221,6 @@ class SlotGame extends Phaser.Scene {
           );
         };
 
-        // 「简」：藏起左侧音乐 / 设置面板；「繁」：显示它（换皮后机身是整张底图，不再放大 115%）
         SlotGame.prototype.toggleFocusMode = function(silent) {
           this.focusMode = !this.focusMode;
           if (!silent) this.sfx.click();
@@ -2349,10 +2296,7 @@ class SlotGame extends Phaser.Scene {
           }
         };
 
-        /**
-         * 写入存档。
-         * @param {boolean} [immediate] true 时立刻落盘；否则 50ms 合并写入
-         */
+        // immediate=true 立刻落盘，否则 50ms 合并
         SlotGame.prototype.saveGameState = function(immediate) {
           const self = this;
           const run = function () {

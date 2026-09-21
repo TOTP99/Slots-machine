@@ -1,14 +1,6 @@
-/* ============================================================
- * 应用启动 + 横竖屏适配
- * 横屏 / 竖屏各用一套 Royale 底图与布局（见 layout.js 的 LAYOUT_PRESETS），
- * 画布尺寸随之切换（横 1536×1024，竖 1024×1536）。切换横竖屏时会保存存档 →
- * 调整画布尺寸 → 重启场景重新布局；若此刻正在转动，会等这一把结束后再切，
- * 避免"已扣注、奖金还没结算"时被打断。
- * 状态：localStorage（wanjin_slot_save + bgMusic*）
- * ============================================================ */
+/* 启动 Phaser + 横竖屏切换 + 音频解锁 */
 
 (function bootstrapGame() {
-  // 先按当前屏幕方向选定布局，再据此创建画布
   applyLayout(detectOrientationKey());
 
   const config = {
@@ -16,11 +8,8 @@
     width: LAYOUT.width,
     height: LAYOUT.height,
     parent: "game",
-    // 仅作为 create() 里底图绘制完成前的极短兜底色，
-    // 与页面背景色 #030202 统一，避免加载瞬间出现色差闪烁。
     backgroundColor: "#030202",
     banner: false,
-    // 用 <img> 加载图片（默认走 XHR，直接双击打开 file:// 页面时会被浏览器拦截）
     loader: { imageLoadType: "HTMLImageElement" },
     scale: {
       mode: Phaser.Scale.FIT,
@@ -73,13 +62,11 @@
 
   document.addEventListener("visibilitychange", function () {
     try {
-      if (typeof bgMusic !== "undefined") {
-        if (document.hidden) {
-          // 切到后台时落盘进度，避免刷新/杀进程丢进度
-          if (typeof bgMusic.persistProgress === "function") bgMusic.persistProgress();
-        } else if (bgMusic.enabled) {
-          bgMusic.tryPlay();
-        }
+      if (typeof bgMusic === "undefined") return;
+      if (document.hidden) {
+        if (typeof bgMusic.persistProgress === "function") bgMusic.persistProgress();
+      } else if (bgMusic.enabled) {
+        bgMusic.tryPlay();
       }
     } catch (e) {}
   });
@@ -97,14 +84,10 @@
       }
     } catch (e) {}
   }
-
   window.addEventListener("beforeunload", persistAll);
   window.addEventListener("pagehide", persistAll);
 })();
 
-/** 横竖屏切换：换布局 + 重启场景；其余情况只刷新缩放
- *  重点：丝滑切换 + 竖屏回位防上移（iOS 地址栏/安全区导致的视觉偏移）
- */
 (function setupOrientationResize() {
   const isIOS =
     /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
@@ -118,13 +101,11 @@
   let currentKey = LAYOUT.key;
   let switching = false;
 
-  /** 强制页面回到可视区顶部并纠正 100vh 偏移（竖屏上移主因） */
   function forceViewportCenter() {
     try {
       window.scrollTo(0, 0);
       if (document.documentElement) document.documentElement.scrollTop = 0;
       if (document.body) document.body.scrollTop = 0;
-      // 用 visualViewport 校正 iOS 工具栏弹出后的偏移
       const vv = window.visualViewport;
       if (vv) {
         const dy = vv.offsetTop || 0;
@@ -133,7 +114,6 @@
           window.scrollTo(0, 0);
         }
       }
-      // 同步 CSS 变量，让 100dvh 类布局用真实可视高度
       const h = (vv && vv.height) || window.innerHeight || 0;
       if (h > 0 && document.documentElement) {
         document.documentElement.style.setProperty("--app-vh", h + "px");
@@ -145,18 +125,13 @@
     forceViewportCenter();
     try {
       const g = window.__slotGame;
-      if (g && g.scale && typeof g.scale.refresh === "function") {
-        g.scale.refresh();
-      }
+      if (g && g.scale && typeof g.scale.refresh === "function") g.scale.refresh();
     } catch (e) {}
     try {
-      if (typeof bgMusic !== "undefined" && bgMusic.enabled) {
-        bgMusic.tryPlay();
-      }
+      if (typeof bgMusic !== "undefined" && bgMusic.enabled) bgMusic.tryPlay();
     } catch (e) {}
   }
 
-  /** 多次延迟刷新，消化浏览器工具栏动画与 CSS 重排 */
   function multiPassRefresh() {
     forceViewportCenter();
     refreshScale();
@@ -182,7 +157,6 @@
     const sceneReady = !!(g && sc && sc.sys && sc.sys.isActive());
 
     if (!sceneReady) {
-      // 场景还没起来（首次加载中）：只改布局，create() 会按新布局来
       currentKey = key;
       applyLayout(key);
       if (g && g.scale) g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
@@ -190,7 +164,6 @@
       return;
     }
 
-    // 正在转动 / 拉杆未复位：等这一把结算完再切
     if (sc.isSpinning || sc.leverState === "down") {
       setTimeout(function () {
         if (detectOrientationKey() === key) switchLayout(key);
@@ -201,7 +174,6 @@
     switching = true;
     currentKey = key;
 
-    // 淡出 → 换尺寸 → 重启 → 淡入，减少硬切闪烁
     const doSwitch = function () {
       applyLayout(key);
       try {
@@ -217,7 +189,6 @@
       g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
       sc.scene.restart();
 
-      // 等场景 create 完成后再多轮居中刷新
       setTimeout(function () {
         multiPassRefresh();
         try {
@@ -251,7 +222,6 @@
         stabilizeTimer = 0;
         var w2 = window.innerWidth || 0;
         var h2 = window.innerHeight || 0;
-        // 尺寸仍在变（地址栏收展），继续等稳
         if (Math.abs(w1 - w2) > 2 || Math.abs(h1 - h2) > 2) {
           scheduleRefresh();
           return;
@@ -284,7 +254,6 @@
     }
   } catch (e) {}
 
-  // 首屏也校正一次
   setTimeout(forceViewportCenter, 0);
   setTimeout(forceViewportCenter, 200);
 })();

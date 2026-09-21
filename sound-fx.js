@@ -1,8 +1,4 @@
-/* ============================================================
- * 音效引擎（Web Audio，纯合成音，无外部音频文件）
- * 依赖：无。需在 slot-game.js 之前加载——slot-game.js 的
- * SlotGame 构造函数里会 `new SoundFX()` 赋给 this.sfx。
- * ============================================================ */
+/* Web Audio 合成音效 */
 
 class SoundFX {
   constructor() {
@@ -12,29 +8,21 @@ class SoundFX {
 
   init() {
     if (!this.enabled) return;
-
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       this.ctx = new AC();
     }
-
     if (this.ctx.state === "suspended") {
-      // 必须等待/使用用户手势恢复，避免首个音效经常被浏览器吞掉
-      const resumeResult = this.ctx.resume();
-      if (resumeResult && typeof resumeResult.catch === "function") {
-        resumeResult.catch(() => {});
-      }
+      const r = this.ctx.resume();
+      if (r && typeof r.catch === "function") r.catch(() => {});
     }
   }
 
-  // 首次用户手势时预热：播放一个几乎无声的极短音，提前把 AudioContext
-  // 从 suspended 状态"焐热"，避免真正需要出声的第一个音效被吞掉/延迟
   warmup() {
     if (!this.enabled) return;
     this.init();
     if (!this.ctx) return;
-
     try {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
@@ -46,47 +34,33 @@ class SoundFX {
     } catch (e) {}
   }
 
-  // 整点报时：清脆的双音铃声
   quarterBell() {
-    // 即使音效开关刚恢复，也先确保 AudioContext 已唤醒
     if (!this.enabled) return;
     this.init();
     this.beep(1046, 0.16, "sine", 0.075);
     setTimeout(() => this.beep(1318, 0.22, "sine", 0.07), 150);
   }
 
-  // ---------- 底层合成器：单音 / 白噪声 ----------
-
   beep(freq = 440, duration = 0.1, type = "sine", volume = 0.05) {
     if (!this.enabled) return;
-
     this.init();
     if (!this.ctx) return;
-
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-
     osc.type = type;
     osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
     gain.gain.setValueAtTime(volume, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(
-      0.001,
-      this.ctx.currentTime + duration,
-    );
-
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
     osc.connect(gain);
     gain.connect(this.ctx.destination);
-
     osc.start();
     osc.stop(this.ctx.currentTime + duration);
   }
 
-  // 短噪声（金属摩擦/撞击底噪），带带通滤波做出"沙沙"质感
   noise(duration = 0.08, volume = 0.04) {
     if (!this.enabled) return;
     this.init();
     if (!this.ctx) return;
-
     const sampleRate = this.ctx.sampleRate;
     const length = Math.floor(sampleRate * duration);
     const buffer = this.ctx.createBuffer(1, length, sampleRate);
@@ -94,35 +68,25 @@ class SoundFX {
     for (let i = 0; i < length; i++) {
       data[i] = (Math.random() * 2 - 1) * (1 - i / length);
     }
-
     const src = this.ctx.createBufferSource();
     const gain = this.ctx.createGain();
     const filter = this.ctx.createBiquadFilter();
-
     src.buffer = buffer;
     filter.type = "bandpass";
     filter.frequency.value = 1200;
     filter.Q.value = 0.8;
-
     gain.gain.setValueAtTime(volume, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(
-      0.001,
-      this.ctx.currentTime + duration,
-    );
-
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
     src.connect(filter);
     filter.connect(gain);
     gain.connect(this.ctx.destination);
     src.start();
   }
 
-  // ---------- 游戏事件音效 ----------
-
   click() {
     this.beep(720, 0.045, "square", 0.035);
   }
 
-  // 握住拉杆：抓握 + 金属轻碰
   leverGrip() {
     this.noise(0.05, 0.035);
     this.beep(180, 0.06, "triangle", 0.05);
@@ -130,25 +94,19 @@ class SoundFX {
     setTimeout(() => this.beep(90, 0.08, "sine", 0.04), 70);
   }
 
-  // 拉下拉杆：齿轮拉动 + 重重到位撞击
   leverPull() {
-    // 拉动过程：低频摩擦 + 下滑音调
     this.noise(0.18, 0.045);
     this.beep(220, 0.12, "sawtooth", 0.05);
     setTimeout(() => this.beep(160, 0.1, "sawtooth", 0.045), 60);
     setTimeout(() => this.beep(110, 0.1, "square", 0.04), 120);
-
-    // 到位重击
     setTimeout(() => {
       this.noise(0.1, 0.06);
       this.beep(70, 0.14, "triangle", 0.08);
       this.beep(140, 0.08, "square", 0.05);
     }, 260);
-
     setTimeout(() => this.beep(55, 0.12, "sine", 0.045), 320);
   }
 
-  // 拉杆回位：弹簧回弹 + 轻金属咔哒
   leverReset() {
     this.beep(140, 0.06, "triangle", 0.035);
     setTimeout(() => this.beep(210, 0.05, "triangle", 0.03), 50);
@@ -190,7 +148,6 @@ class SoundFX {
     this.beep(180, 0.08, "sawtooth", 0.025);
   }
 
-  // 硬币叮当声：买入（out）音调上扬清脆，提出（in）音调回落收拢
   coinChime(direction = "out") {
     if (direction === "out") {
       this.beep(1046, 0.05, "sine", 0.05);
