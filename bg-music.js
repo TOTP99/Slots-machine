@@ -55,9 +55,37 @@ class BGMusic {
     this.audio.addEventListener("playing", () => {
       this._skipAttempts = 0; // 成功播放后重置跳过计数
     });
+    // 定期落盘进度，刷新页面后可从同一位置续播
+    this.audio.addEventListener("timeupdate", () => {
+      if (!this._timeSavePending) {
+        this._timeSavePending = true;
+        setTimeout(() => {
+          this._timeSavePending = false;
+          this.persistProgress();
+        }, 2000);
+      }
+    });
+    this.audio.addEventListener("pause", () => this.persistProgress());
+
+    // 恢复上次播放进度（同一曲号）
+    const savedTime = parseFloat(localStorage.getItem("bgMusicCurrentTime") || "0");
+    this._resumeTime =
+      Number.isFinite(savedTime) && savedTime > 0.5 ? savedTime : 0;
 
     this._loadTrack(this.currentNum);
     this._setupMediaSession();
+  }
+
+  /** 把曲号 + 播放进度写入 localStorage，刷新后可续播 */
+  persistProgress() {
+    try {
+      if (!this.audio) return;
+      localStorage.setItem("bgMusicCurrentNum", String(this.currentNum || 1));
+      const t = this.audio.currentTime;
+      if (Number.isFinite(t) && t >= 0) {
+        localStorage.setItem("bgMusicCurrentTime", String(Math.floor(t * 10) / 10));
+      }
+    } catch (e) {}
   }
 
   // 尽量让系统在切到其他 App/锁屏时仍显示媒体控件（真正关网页后无法继续播）
@@ -161,13 +189,38 @@ class BGMusic {
     }
   }
 
-  _loadTrack(num) {
+  _loadTrack(num, opts) {
+    const resume = opts && typeof opts.resumeTime === "number" ? opts.resumeTime : null;
+    // 切歌时清掉旧进度；首次构造带 _resumeTime 则保留
+    const seekTo =
+      resume != null
+        ? resume
+        : this._resumeTime && this.currentNum === num
+          ? this._resumeTime
+          : 0;
+    this._resumeTime = 0; // 只用一次
+
     this.currentNum = num;
     try {
       localStorage.setItem("bgMusicCurrentNum", String(num));
+      if (seekTo <= 0) localStorage.setItem("bgMusicCurrentTime", "0");
     } catch (e) {}
     this.audio.src = new URL(`${num}.mp3`, BG_MUSIC_BASE).href;
     this.audio.loop = this.playMode === "single";
+
+    if (seekTo > 0.5) {
+      const applySeek = () => {
+        try {
+          if (this.audio.duration && seekTo < this.audio.duration - 1) {
+            this.audio.currentTime = seekTo;
+          }
+        } catch (e) {}
+      };
+      // loadedmetadata / canplay 任一先到即可
+      this.audio.addEventListener("loadedmetadata", applySeek, { once: true });
+      this.audio.addEventListener("canplay", applySeek, { once: true });
+    }
+
     this._notifyTrackChange();
   }
 
@@ -247,12 +300,16 @@ class BGMusic {
 
   skipNext() {
     this._skipAttempts = 0;
+    this._resumeTime = 0;
+    try { localStorage.setItem("bgMusicCurrentTime", "0"); } catch (e) {}
     this._loadTrack(this._pickNext());
     if (this.enabled) this._playAudio();
   }
 
   skipPrev() {
     this._skipAttempts = 0;
+    this._resumeTime = 0;
+    try { localStorage.setItem("bgMusicCurrentTime", "0"); } catch (e) {}
     let prev;
     if (this.shuffle) {
       prev = this._pickNext();

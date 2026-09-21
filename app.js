@@ -72,15 +72,19 @@
   document.addEventListener("keydown", unlockAudioOnce, true);
 
   document.addEventListener("visibilitychange", function () {
-    if (document.hidden) return;
     try {
-      if (typeof bgMusic !== "undefined" && bgMusic.enabled) {
-        bgMusic.tryPlay();
+      if (typeof bgMusic !== "undefined") {
+        if (document.hidden) {
+          // 切到后台时落盘进度，避免刷新/杀进程丢进度
+          if (typeof bgMusic.persistProgress === "function") bgMusic.persistProgress();
+        } else if (bgMusic.enabled) {
+          bgMusic.tryPlay();
+        }
       }
     } catch (e) {}
   });
 
-  window.addEventListener("beforeunload", function () {
+  function persistAll() {
     try {
       const sc = window.__slotGameScene;
       if (sc && sc.clockTimer) {
@@ -88,11 +92,19 @@
         sc.clockTimer = null;
       }
       if (sc && typeof sc.saveGameState === "function") sc.saveGameState(true);
+      if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {
+        bgMusic.persistProgress();
+      }
     } catch (e) {}
-  });
+  }
+
+  window.addEventListener("beforeunload", persistAll);
+  window.addEventListener("pagehide", persistAll);
 })();
 
-/** 横竖屏切换：换布局 + 重启场景；其余情况只刷新缩放 */
+/** 横竖屏切换：换布局 + 重启场景；其余情况只刷新缩放
+ *  重点：丝滑切换 + 竖屏回位防上移（iOS 地址栏/安全区导致的视觉偏移）
+ */
 (function setupOrientationResize() {
   const isIOS =
     /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
@@ -104,8 +116,33 @@
   let debounceTimer = 0;
   let stabilizeTimer = 0;
   let currentKey = LAYOUT.key;
+  let switching = false;
+
+  /** 强制页面回到可视区顶部并纠正 100vh 偏移（竖屏上移主因） */
+  function forceViewportCenter() {
+    try {
+      window.scrollTo(0, 0);
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+      // 用 visualViewport 校正 iOS 工具栏弹出后的偏移
+      const vv = window.visualViewport;
+      if (vv) {
+        const dy = vv.offsetTop || 0;
+        if (dy !== 0) {
+          window.scrollTo(0, dy);
+          window.scrollTo(0, 0);
+        }
+      }
+      // 同步 CSS 变量，让 100dvh 类布局用真实可视高度
+      const h = (vv && vv.height) || window.innerHeight || 0;
+      if (h > 0 && document.documentElement) {
+        document.documentElement.style.setProperty("--app-vh", h + "px");
+      }
+    } catch (e) {}
+  }
 
   function refreshScale() {
+    forceViewportCenter();
     try {
       const g = window.__slotGame;
       if (g && g.scale && typeof g.scale.refresh === "function") {
@@ -119,8 +156,26 @@
     } catch (e) {}
   }
 
+  /** 多次延迟刷新，消化浏览器工具栏动画与 CSS 重排 */
+  function multiPassRefresh() {
+    forceViewportCenter();
+    refreshScale();
+    setTimeout(function () {
+      forceViewportCenter();
+      refreshScale();
+    }, 60);
+    setTimeout(function () {
+      forceViewportCenter();
+      refreshScale();
+    }, 180);
+    setTimeout(function () {
+      forceViewportCenter();
+      refreshScale();
+    }, 420);
+  }
+
   function switchLayout(key) {
-    if (key === currentKey) return;
+    if (key === currentKey || switching) return;
 
     const g = window.__slotGame;
     const sc = window.__slotGameScene;
@@ -131,6 +186,7 @@
       currentKey = key;
       applyLayout(key);
       if (g && g.scale) g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
+      multiPassRefresh();
       return;
     }
 
@@ -138,18 +194,50 @@
     if (sc.isSpinning || sc.leverState === "down") {
       setTimeout(function () {
         if (detectOrientationKey() === key) switchLayout(key);
-      }, 300);
+      }, 280);
       return;
     }
 
+    switching = true;
     currentKey = key;
-    applyLayout(key);
+
+    // 淡出 → 换尺寸 → 重启 → 淡入，减少硬切闪烁
+    const doSwitch = function () {
+      applyLayout(key);
+      try {
+        if (typeof sc.saveGameState === "function") sc.saveGameState(true);
+      } catch (e) {}
+      try {
+        if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {
+          bgMusic.persistProgress();
+        }
+      } catch (e) {}
+
+      forceViewportCenter();
+      g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
+      sc.scene.restart();
+
+      // 等场景 create 完成后再多轮居中刷新
+      setTimeout(function () {
+        multiPassRefresh();
+        try {
+          const sc2 = window.__slotGameScene;
+          if (sc2 && sc2.cameras && sc2.cameras.main) {
+            sc2.cameras.main.fadeIn(220, 3, 2, 2);
+          }
+        } catch (e) {}
+        switching = false;
+      }, 50);
+    };
+
     try {
-      if (typeof sc.saveGameState === "function") sc.saveGameState(true);
+      if (sc.cameras && sc.cameras.main) {
+        sc.cameras.main.fadeOut(140, 3, 2, 2);
+        sc.time.delayedCall(150, doSwitch);
+        return;
+      }
     } catch (e) {}
-    g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
-    sc.scene.restart();
-    setTimeout(refreshScale, 60);
+    doSwitch();
   }
 
   function scheduleRefresh() {
@@ -163,18 +251,31 @@
         stabilizeTimer = 0;
         var w2 = window.innerWidth || 0;
         var h2 = window.innerHeight || 0;
-        if (w1 !== w2 || h1 !== h2) {
+        // 尺寸仍在变（地址栏收展），继续等稳
+        if (Math.abs(w1 - w2) > 2 || Math.abs(h1 - h2) > 2) {
           scheduleRefresh();
           return;
         }
+        forceViewportCenter();
         switchLayout(detectOrientationKey());
-        refreshScale();
-      }, isIOS ? 120 : 80);
-    }, isIOS ? 220 : 180);
+        multiPassRefresh();
+      }, isIOS ? 160 : 100);
+    }, isIOS ? 240 : 160);
   }
 
-  window.addEventListener("orientationchange", scheduleRefresh);
+  window.addEventListener("orientationchange", function () {
+    forceViewportCenter();
+    scheduleRefresh();
+  });
   window.addEventListener("resize", scheduleRefresh);
+  try {
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", scheduleRefresh);
+      window.visualViewport.addEventListener("scroll", function () {
+        forceViewportCenter();
+      });
+    }
+  } catch (e) {}
   try {
     if (window.matchMedia) {
       const mql = window.matchMedia("(orientation: portrait)");
@@ -182,4 +283,8 @@
       else if (mql.addListener) mql.addListener(scheduleRefresh);
     }
   } catch (e) {}
+
+  // 首屏也校正一次
+  setTimeout(forceViewportCenter, 0);
+  setTimeout(forceViewportCenter, 200);
 })();

@@ -142,9 +142,13 @@ class SlotGame extends Phaser.Scene {
 
         SlotGame.prototype.createHeader = function() {
           const J = LAYOUT.jackpot;
+          const isPortrait = LAYOUT.key === "portrait";
 
-          const pill = this.add.graphics().setPosition(J.x, J.y).setDepth(12);
-          this.drawGradientPanel(pill, J.w, J.h, J.h / 2, 0x0a1838, 0x040a1c, 0.82, UI.neon, 2);
+          // 横屏保留霓虹胶囊边框；竖屏去掉边框，只保留文字 + 星光（更干净）
+          if (!isPortrait) {
+            const pill = this.add.graphics().setPosition(J.x, J.y).setDepth(12);
+            this.drawGradientPanel(pill, J.w, J.h, J.h / 2, 0x0a1838, 0x040a1c, 0.82, UI.neon, 2);
+          }
 
           this.createJackpotSparkle(J.x, J.y, J.w - 60, J.h);
 
@@ -649,11 +653,14 @@ class SlotGame extends Phaser.Scene {
           const ck = LAYOUT.clock;
           this.clockContainer = this.wrapInScaledContainer(
             [
+              this.rightClockShadow,
               this.rightClockToggleBg,
+              this.rightClockHighlight,
               this.rightClockText,
               this.modeChipBg,
               this.modeLabelSimple,
               this.modeLabelComplex,
+              this.rightClockRay,
               this.rightClockToggleHit,
             ],
             855, 165, ck.x, ck.y, ck.k, 20,
@@ -767,17 +774,26 @@ class SlotGame extends Phaser.Scene {
           this._clockChipW = chipW;
           this._clockChipH = chipH;
           this._clockChipR = chipR;
+          this._clockBtnW = btnW;
+          this._clockBtnH = btnH;
+          this._clockBtnR = btnRadius;
 
+          // 底层阴影：营造浮起的立体厚度
+          this.rightClockShadow = this.add.graphics().setPosition(lx + 2, cy + 3);
+          this.rightClockShadow.fillStyle(0x000000, 0.45);
+          this.rightClockShadow.fillRoundedRect(
+            -btnW / 2, -btnH / 2, btnW, btnH, btnRadius,
+          );
+
+          // 主体：顶亮底暗的立体渐变 + 双层描边
           this.rightClockToggleBg = this.add.graphics().setPosition(lx, cy);
-          this.drawRoundedPanel(
-            this.rightClockToggleBg,
-            btnW,
-            btnH,
-            btnRadius,
-            UI.ruby,
-            2,
-            0x101c3a,
-            0.92,
+          this._drawClockButton3D(false);
+
+          // 顶部高光条（立体感）
+          this.rightClockHighlight = this.add.graphics().setPosition(lx, cy);
+          this.rightClockHighlight.fillStyle(0xffffff, 0.12);
+          this.rightClockHighlight.fillRoundedRect(
+            -btnW / 2 + 4, -btnH / 2 + 3, btnW - 8, Math.max(10, btnH * 0.28), btnRadius - 4,
           );
 
           this.rightClockText = this.add
@@ -787,6 +803,7 @@ class SlotGame extends Phaser.Scene {
               color: "#ffd700",
               stroke: "#000000",
               strokeThickness: 1,
+              shadow: { offsetX: 0, offsetY: 1, color: "#000000", blur: 4, fill: true },
             })
             .setOrigin(0.5);
 
@@ -812,44 +829,105 @@ class SlotGame extends Phaser.Scene {
 
           this.refreshModeLabel();
 
+          // 射线光晕层（按下时发射）
+          this.rightClockRay = this.add.graphics().setPosition(lx, cy).setAlpha(0).setDepth(21);
+
           this.rightClockToggleHit = this.add
             .rectangle(lx, cy, btnW, btnH, 0x000000, 0.01)
             .setInteractive({ useHandCursor: true });
 
           this.rightClockToggleHit.on("pointerover", () => {
-            this.drawRoundedPanel(
-              this.rightClockToggleBg,
-              btnW,
-              btnH,
-              btnRadius,
-              UI.ruby,
-              3.2,
-              0x101c3a,
-              0.92,
-            );
+            this._drawClockButton3D(true);
           });
           this.rightClockToggleHit.on("pointerout", () => {
-            this.drawRoundedPanel(
-              this.rightClockToggleBg,
-              btnW,
-              btnH,
-              btnRadius,
-              UI.ruby,
-              2,
-              0x101c3a,
-              0.92,
-            );
+            this._drawClockButton3D(false);
           });
           this.rightClockToggleHit.on("pointerdown", () => {
+            this.sfx.click();
+            // 按下压缩立体感
             this.tweens.add({
-              targets: this.rightClockToggleBg,
-              scaleX: 0.94,
-              scaleY: 0.94,
-              duration: 80,
+              targets: [
+                this.rightClockToggleBg,
+                this.rightClockHighlight,
+                this.rightClockShadow,
+                this.rightClockText,
+                this.modeChipBg,
+                this.modeLabelSimple,
+                this.modeLabelComplex,
+              ],
+              scaleX: 0.92,
+              scaleY: 0.92,
+              duration: 70,
               yoyo: true,
               ease: "Sine.easeInOut",
             });
+            this._burstClockRays(lx, cy);
             this.toggleFocusMode();
+          });
+        };
+
+        /** 立体时钟按钮：顶亮底暗 + 红金描边 */
+        SlotGame.prototype._drawClockButton3D = function(hover) {
+          const g = this.rightClockToggleBg;
+          if (!g) return;
+          const w = this._clockBtnW || 76;
+          const h = this._clockBtnH || 82;
+          const r = this._clockBtnR || 14;
+          g.clear();
+          // 底色渐变（深海军蓝 → 更深）
+          g.fillGradientStyle(
+            hover ? 0x1a2a4a : 0x121c36,
+            hover ? 0x1a2a4a : 0x121c36,
+            hover ? 0x0a1020 : 0x080e1c,
+            hover ? 0x0a1020 : 0x080e1c,
+            0.96,
+          );
+          g.fillRoundedRect(-w / 2, -h / 2, w, h, r);
+          // 外层红宝石描边
+          g.lineStyle(hover ? 3.2 : 2.2, UI.ruby, 1);
+          g.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
+          // 内层金线
+          g.lineStyle(1, UI.gold, hover ? 0.85 : 0.55);
+          g.strokeRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h - 6, Math.max(4, r - 3));
+        };
+
+        /** 按下时钟键：向外发射短射线光晕 */
+        SlotGame.prototype._burstClockRays = function(cx, cy) {
+          const ray = this.rightClockRay;
+          if (!ray) return;
+          ray.clear();
+          ray.setPosition(cx, cy);
+          ray.setAlpha(1);
+          const rays = 12;
+          for (let i = 0; i < rays; i++) {
+            const a = (Math.PI * 2 * i) / rays + Math.random() * 0.15;
+            const len = 28 + Math.random() * 36;
+            const c = i % 2 === 0 ? 0xffd700 : 0x39b8ff;
+            ray.lineStyle(2, c, 0.95);
+            ray.beginPath();
+            ray.moveTo(Math.cos(a) * 18, Math.sin(a) * 18);
+            ray.lineTo(Math.cos(a) * len, Math.sin(a) * len);
+            ray.strokePath();
+          }
+          // 中心光晕圆
+          ray.fillStyle(0xffd700, 0.35);
+          ray.fillCircle(0, 0, 16);
+          ray.fillStyle(0xffffff, 0.2);
+          ray.fillCircle(0, 0, 8);
+
+          this.tweens.killTweensOf(ray);
+          ray.setScale(0.6);
+          this.tweens.add({
+            targets: ray,
+            alpha: 0,
+            scale: 1.55,
+            duration: 380,
+            ease: "Cubic.easeOut",
+            onComplete: () => {
+              ray.clear();
+              ray.setAlpha(0);
+              ray.setScale(1);
+            },
           });
         };
 
@@ -891,29 +969,60 @@ class SlotGame extends Phaser.Scene {
           overlay.on("pointerdown", () => this.toggleSettingsModal(false));
           children.push(overlay);
 
-          // 外层微光：圆角版，呼应弹窗本体的圆角
+          // 外层金光晕：赌场霓虹氛围
           const modalGlow = this.add.graphics().setPosition(cx, cy);
-          modalGlow.fillStyle(UI.gold, 0.08);
-          modalGlow.fillRoundedRect(-(panelW + 9) / 2, -(panelH + 9) / 2, panelW + 9, panelH + 9, 22);
-          modalGlow.lineStyle(1, UI.goldDim, 0.9);
-          modalGlow.strokeRoundedRect(-(panelW + 9) / 2, -(panelH + 9) / 2, panelW + 9, panelH + 9, 22);
+          modalGlow.fillStyle(0xffd700, 0.06);
+          modalGlow.fillRoundedRect(-(panelW + 18) / 2, -(panelH + 18) / 2, panelW + 18, panelH + 18, 26);
+          modalGlow.lineStyle(2, 0xffd700, 0.35);
+          modalGlow.strokeRoundedRect(-(panelW + 14) / 2, -(panelH + 14) / 2, panelW + 14, panelH + 14, 24);
+          modalGlow.lineStyle(1, 0x39b8ff, 0.25);
+          modalGlow.strokeRoundedRect(-(panelW + 22) / 2, -(panelH + 22) / 2, panelW + 22, panelH + 22, 28);
           children.push(modalGlow);
 
-          // 弹窗主体：圆角渐变（视觉层），叠加一个透明的矩形热区专门负责拦截点击——
-          // 圆角 Graphics 本身不支持精确的圆角点击判定，用不可见矩形兜底最省事可靠。
+          // 弹窗主体：深酒红丝绒底 + 双层金边（赌场牌桌感）
           const panelVisual = this.add.graphics().setPosition(cx, cy);
-          this.drawGradientPanel(
-            panelVisual,
-            panelW,
-            panelH,
-            20,
-            this.shadeColor(0x0a1226, 16),
-            this.shadeColor(0x0a1226, -10),
-            0.98,
-            UI.gold,
-            2,
-          );
+          // 丝绒深红 → 近黑
+          panelVisual.fillGradientStyle(0x2a0a14, 0x2a0a14, 0x0c060a, 0x0c060a, 0.98);
+          panelVisual.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 20);
+          // 外金边
+          panelVisual.lineStyle(2.5, 0xffd700, 0.95);
+          panelVisual.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 20);
+          // 内细金线
+          panelVisual.lineStyle(1, 0xc9a227, 0.7);
+          panelVisual.strokeRoundedRect(-panelW / 2 + 5, -panelH / 2 + 5, panelW - 10, panelH - 10, 16);
+          // 四角装饰菱形
+          const corner = (ox, oy) => {
+            panelVisual.fillStyle(0xffd700, 0.85);
+            panelVisual.fillCircle(ox, oy, 3);
+            panelVisual.lineStyle(1.2, 0xffd700, 0.6);
+            panelVisual.strokeCircle(ox, oy, 7);
+          };
+          const inset = 14;
+          corner(-panelW / 2 + inset, -panelH / 2 + inset);
+          corner(panelW / 2 - inset, -panelH / 2 + inset);
+          corner(-panelW / 2 + inset, panelH / 2 - inset);
+          corner(panelW / 2 - inset, panelH / 2 - inset);
           children.push(panelVisual);
+
+          // 顶部赌场标题条
+          const titleBar = this.add.graphics().setPosition(cx, top + 22);
+          titleBar.fillGradientStyle(0x3d1520, 0x3d1520, 0x1a0a10, 0x1a0a10, 0.9);
+          titleBar.fillRoundedRect(-140, -14, 280, 28, 8);
+          titleBar.lineStyle(1, 0xffd700, 0.7);
+          titleBar.strokeRoundedRect(-140, -14, 280, 28, 8);
+          children.push(titleBar);
+          children.push(
+            this.add
+              .text(cx, top + 22, "✦ ROYALE LOUNGE ✦", {
+                fontSize: "15px",
+                fontStyle: "bold",
+                fontFamily: "Arial, sans-serif",
+                color: "#ffd700",
+                stroke: "#1a0808",
+                strokeThickness: 2,
+              })
+              .setOrigin(0.5),
+          );
 
           const panel = this.add
             .rectangle(cx, cy, panelW, panelH, 0x000000, 0.001)
@@ -939,10 +1048,10 @@ class SlotGame extends Phaser.Scene {
             ["🍄🍄🍄", "×4"],
             ["Any pair", "×2"],
           ];
-          const paySpacing = 43;
-          // 8 行中心跨度 = 7 * spacing；上下对称留白，避免内容整体偏上
+          const paySpacing = 40;
+          // 标题条占顶部约 40px，内容略下移；上下留白对称
           const contentSpan = (payRows.length - 1) * paySpacing;
-          const payStart = top + (panelH - contentSpan) / 2;
+          const payStart = top + 42 + (panelH - 52 - contentSpan) / 2;
           payRows.forEach((row, i) => {
             const ry = payStart + i * paySpacing;
             children.push(
