@@ -96,7 +96,58 @@
   let debounceTimer = 0;
   let stabilizeTimer = 0;
 
+  // 竖屏：把 #game-wrapper 嵌进 Royale 边框透明转轮窗；横屏还原全屏
+  // 边框图 1024×1536，透明区约 x 23.8%~75.7%、y 15.6%~79.4%
+  const FRAME_W = 1024;
+  const FRAME_H = 1536;
+  const SLOT = { left: 0.238, top: 0.156, right: 0.757, bottom: 0.794 };
+
+  function layoutPortraitFrame() {
+    const wrap = document.getElementById("game-wrapper");
+    const frame = document.getElementById("portrait-frame");
+    if (!wrap) return;
+
+    const isPortrait = window.matchMedia
+      ? window.matchMedia("(orientation: portrait)").matches
+      : window.innerHeight >= window.innerWidth;
+
+    if (!isPortrait) {
+      wrap.style.left = "";
+      wrap.style.top = "";
+      wrap.style.width = "";
+      wrap.style.height = "";
+      wrap.style.position = "";
+      wrap.style.background = "";
+      return;
+    }
+
+    const vw = window.innerWidth || document.documentElement.clientWidth;
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    const scale = Math.min(vw / FRAME_W, vh / FRAME_H);
+    const fw = FRAME_W * scale;
+    const fh = FRAME_H * scale;
+    const ox = (vw - fw) / 2;
+    const oy = (vh - fh) / 2;
+
+    const left = ox + SLOT.left * fw;
+    const top = oy + SLOT.top * fh;
+    const width = (SLOT.right - SLOT.left) * fw;
+    const height = (SLOT.bottom - SLOT.top) * fh;
+
+    wrap.style.position = "fixed";
+    wrap.style.left = Math.round(left) + "px";
+    wrap.style.top = Math.round(top) + "px";
+    wrap.style.width = Math.round(width) + "px";
+    wrap.style.height = Math.round(height) + "px";
+    wrap.style.background = "transparent";
+
+    if (frame) {
+      frame.style.display = "block";
+    }
+  }
+
   function refreshScale() {
+    layoutPortraitFrame();
     try {
       const g = window.__slotGame;
       if (g && g.scale && typeof g.scale.refresh === "function") {
@@ -109,6 +160,13 @@
       }
     } catch (e) {}
   }
+
+  // 首屏立即布局一次（等图片/字体无关）
+  layoutPortraitFrame();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", layoutPortraitFrame);
+  }
+  window.addEventListener("load", layoutPortraitFrame);
 
   function scheduleRefresh() {
     if (debounceTimer) clearTimeout(debounceTimer);

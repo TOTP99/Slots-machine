@@ -1,4 +1,4 @@
-/* 万锦老虎机：横竖屏同一套 Phaser 界面（不再嵌竖屏 iframe） */
+/* 万锦老虎机：横屏原样；竖屏套 Royale 边框 */
 
 :root {
   --gold: #ffd700;
@@ -15,8 +15,6 @@ body {
   margin: 0;
   width: 100%;
   height: 100%;
-  /* 与画布暗角的边缘色（#030202）统一，让竖屏黑边和画布边缘无缝衔接，
-     不再用旧的 #070006（和新的暗角边缘色有肉眼可辨的细微色差）。 */
   background: #030202;
   overflow: hidden;
   touch-action: none;
@@ -32,6 +30,22 @@ body {
   justify-content: center;
   -webkit-align-items: center;
   align-items: center;
+  position: relative;
+}
+
+/* 竖屏边框图：默认隐藏，仅竖屏显示 */
+.portrait-frame {
+  display: none;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+  z-index: 2;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #game-wrapper {
@@ -46,9 +60,9 @@ body {
   align-items: center;
   background: #030202;
   overflow: hidden;
+  z-index: 1;
 }
 
-/* 横屏：按 16:9 尽量铺满；竖屏：按宽度铺满，上下留黑边（游戏内部仍是 960×540） */
 #game {
   width: 100%;
   height: 100%;
@@ -72,19 +86,45 @@ body {
   object-fit: contain;
 }
 
-/* 竖屏时用宽度撑满，高度按 16:9 比例，垂直居中 */
-@media (orientation: portrait) {
-  #game {
-    width: 100vw;
-    height: min(100dvh, calc(100vw * 9 / 16));
-    max-height: 100dvh;
-  }
-}
-
+/* ---------- 横屏：完全原样 ---------- */
 @media (orientation: landscape) {
+  .portrait-frame {
+    display: none !important;
+  }
+
+  #game-wrapper {
+    position: static;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    left: auto;
+    top: auto;
+  }
+
   #game {
     width: min(100vw, calc(100dvh * 16 / 9));
     height: min(100dvh, calc(100vw * 9 / 16));
     aspect-ratio: 16 / 9;
+  }
+}
+
+/* ---------- 竖屏：显示边框，画布置入透明窗 ---------- */
+@media (orientation: portrait) {
+  .portrait-frame {
+    display: block;
+  }
+
+  #game-wrapper {
+    position: fixed;
+    /* 具体 left/top/width/height 由 app.js 按边框实际 contain 区域写入 */
+    background: transparent;
+    margin: 0;
+  }
+
+  #game {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
   }
 }
