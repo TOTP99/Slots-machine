@@ -40,6 +40,32 @@ class SlotGame extends Phaser.Scene {
           };
         }
 
+        // 场景重启（横竖屏切换）时重置运行期状态；余额/下注等由 loadGameState 从存档恢复
+        init() {
+          if (this.clockTimer) {
+            clearInterval(this.clockTimer);
+            this.clockTimer = null;
+          }
+          this.reels = [];
+          this.focusHideGroup = [];
+          this.focusMode = false;
+          this.isSpinning = false;
+          this.stopRequested = false;
+          this.inputLocked = false;
+          this.leverState = "up";
+          this.autoPlay = false;
+          this.autoPlayRounds = 0;
+          this.stoppedReelsCount = 0;
+          this.jackpotStars = [];
+          this._handFollow = false;
+        }
+
+        preload() {
+          this.load.image(LAYOUT.bgKey, LAYOUT.bgFile);
+          this.load.image(LAYOUT.ballKey, LAYOUT.ballFile);
+          this.load.image(LAYOUT.shaftKey, LAYOUT.shaftFile);
+        }
+
         create() {
           window.__slotGameScene = this;
           this.machineScaleGroup = this.add.container(0, 0);
@@ -55,44 +81,17 @@ class SlotGame extends Phaser.Scene {
           this.createSettingsModal(); // 赔率 + 速度 / 自动五次 / 音效 设置弹窗
           this.createKeyboardControls();
           this.createAmbientAnimations();
-          this.machineScaleAnchor = { x: LAYOUT.machineX, y: LAYOUT.machineY };
-          this.toggleFocusMode(true); // 默认进入「简」：藏左侧面板，机身放大 115%
+          this.toggleFocusMode(true); // 默认进入「简」：藏左侧面板
           this.updateDisplay();
-          // 仅竖屏切入换皮；横屏保持 create 出来的原样
-          if (window.__portraitMode === true) {
-            this.setPortraitMode(true);
-          }
         }
 
 }
 
         // 径向背景：同心圆近似渐变（中心暖暗 → 边缘近黑，自带暗角）
+        // 背景：整张 Royale 底图（带三个透明转轴窗口），盖在转轴之上；
+        // 转轴与窗口底色都画在它下面（depth 更小）。
         SlotGame.prototype.createBackdrop = function() {
-          const cx = GAME_WIDTH / 2;
-          const cy = GAME_HEIGHT / 2;
-          const maxR = Math.hypot(cx, cy) + 20;
-
-          const centerColor = Phaser.Display.Color.ValueToColor(0x181206);
-          const edgeColor = Phaser.Display.Color.ValueToColor(0x030202);
-
-          const gfx = this.add.graphics().setDepth(-1000);
-          this._backdropGfx = gfx;
-          const steps = 48;
-          for (let i = steps; i >= 0; i--) {
-            const t = i / steps; // 1=边缘, 0=中心
-            const r = maxR * t;
-            const color = Phaser.Display.Color.Interpolate.ColorWithColor(
-              centerColor,
-              edgeColor,
-              steps,
-              i,
-            );
-            gfx.fillStyle(
-              Phaser.Display.Color.GetColor(color.r, color.g, color.b),
-              1,
-            );
-            gfx.fillCircle(cx, cy, r);
-          }
+          this.add.image(0, 0, LAYOUT.bgKey).setOrigin(0).setDepth(10);
         };
 
         SlotGame.prototype.shadeColor = function(hex, percent) {
@@ -131,7 +130,7 @@ class SlotGame extends Phaser.Scene {
         };
 
         SlotGame.prototype.setControlActive = function(bg, txt, active) {
-          const fill = active ? UI.activeFill : 0x1a140c;
+          const fill = active ? UI.activeFill : 0x101c3a;
           const top = this.shadeColor(fill, active ? 16 : 10);
           const bottom = this.shadeColor(fill, -8);
           const stroke = active ? UI.gold : UI.goldDim;
@@ -142,38 +141,45 @@ class SlotGame extends Phaser.Scene {
         };
 
         SlotGame.prototype.createHeader = function() {
-          this.createJackpotSparkle(480, LAYOUT.jackpotY, 420, 46);
+          const J = LAYOUT.jackpot;
+
+          const pill = this.add.graphics().setPosition(J.x, J.y).setDepth(12);
+          this.drawGradientPanel(pill, J.w, J.h, J.h / 2, 0x0a1838, 0x040a1c, 0.82, UI.neon, 2);
+
+          this.createJackpotSparkle(J.x, J.y, J.w - 60, J.h);
 
           this.jackpotText = this.add
             .text(
-              480,
-              LAYOUT.jackpotY,
+              J.x,
+              J.y,
               `🏵️ Jackpot ${this.formatMoney(this.jackpotValue)}`,
               {
-                fontSize: "29px",
+                fontSize: J.font + "px",
                 fontStyle: "bold",
                 fontFamily: 'Arial, sans-serif',
                 color: "#f0d58a",
                 stroke: "#090b0b",
-                strokeThickness: 1,
-                shadow: { offsetX: 0, offsetY: 1, color: "#9b7a3e", blur: 6, fill: true },
+                strokeThickness: 2,
+                shadow: { offsetX: 0, offsetY: 2, color: "#9b7a3e", blur: 8, fill: true },
               },
             )
-            .setOrigin(0.5);
+            .setOrigin(0.5)
+            .setDepth(13);
         };
 
         SlotGame.prototype.createJackpotSparkle = function(cx, cy, w, h) {
           const count = 19;
+          const k = LAYOUT.k;
           this.jackpotStars = [];
           for (let i = 0; i < count; i++) {
             const sx = cx - w / 2 + Phaser.Math.Between(8, w - 8);
             const sy = cy - h / 2 + Phaser.Math.Between(4, h - 4);
             const points = Phaser.Math.RND.pick([4, 4, 5]);
-            const outerR = Phaser.Math.Between(3, 6);
+            const outerR = Phaser.Math.Between(3, 6) * k;
             const star = this.add
-              .star(sx, sy, points, Math.max(1, outerR - 3), outerR, 0xfff3c4, 0.9)
+              .star(sx, sy, points, Math.max(1, outerR * 0.5), outerR, 0xfff3c4, 0.9)
               .setBlendMode(Phaser.BlendModes.ADD)
-              .setDepth(0);
+              .setDepth(12.5);
             this.jackpotStars.push(star);
             this.twinkleStar(star);
           }
@@ -216,194 +222,115 @@ class SlotGame extends Phaser.Scene {
           this.refreshPlayPauseIcon();
         };
 
+        // 机身本体是底图；这里只补：转轴窗口底色 / 上下暗角 / 三条判奖线 / 边框呼吸光
         SlotGame.prototype.createMachine = function() {
-          const mx = LAYOUT.machineX;
-          const my = LAYOUT.machineY;
-          const shellRadius = 26;
+          const L = LAYOUT;
+          const F = L.frame;
 
-          this.machineGlow = this.add.rectangle(
-            mx,
-            my,
-            LAYOUT.machineOuterW + 14,
-            LAYOUT.machineOuterH + 10,
-            UI.gold,
-            0.1,
-          );
+          // 边框呼吸描边（仅描边，无填充）
+          this.machineGlow = this.add
+            .rectangle(F.x, F.y, F.w, F.h)
+            .setStrokeStyle(6, UI.neon, 1)
+            .setDepth(11);
 
-          const outerShell = this.add.graphics().setPosition(mx, my);
-          this.drawGradientPanel(
-            outerShell,
-            LAYOUT.machineOuterW + 6,
-            LAYOUT.machineOuterH + 6,
-            shellRadius,
-            this.shadeColor(UI.goldDim, -10),
-            this.shadeColor(UI.goldDim, -55),
-            0.85,
-            UI.gold,
-            2.5,
-          );
+          L.reelWindows.forEach(([x0, x1]) => {
+            const w = x1 - x0;
 
-          const darkShell = this.add.graphics().setPosition(mx, my);
-          this.drawGradientPanel(
-            darkShell,
-            LAYOUT.machineOuterW,
-            LAYOUT.machineOuterH,
-            shellRadius - 4,
-            this.shadeColor(0x101714, 12),
-            this.shadeColor(0x101714, -22),
-            1,
-            UI.goldDim,
-            2,
-          );
+            // 窗口底色（转轴在它上面、底图在转轴上面）
+            const back = this.add.graphics().setDepth(1);
+            back.fillGradientStyle(0x030817, 0x030817, 0x0a1a44, 0x0a1a44, 1);
+            back.fillRect(x0, L.reelTop, w, L.reelH);
 
-          const innerPanel = this.add.graphics().setPosition(mx, my);
-          this.drawGradientPanel(
-            innerPanel,
-            LAYOUT.machineInnerW,
-            LAYOUT.machineInnerH,
-            shellRadius - 10,
-            this.shadeColor(UI.panelDeep, 16),
-            this.shadeColor(UI.panelDeep, -12),
-            1,
-            UI.goldDim,
-            1.5,
-          );
+            // 上下暗角，营造"凹进去"的玻璃感（在转轴之上、底图之下）
+            const shade = this.add.graphics().setDepth(4);
+            const band = L.reelH * 0.16;
+            shade.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.6, 0.6, 0, 0);
+            shade.fillRect(x0, L.reelTop, w, band);
+            shade.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.6, 0.6);
+            shade.fillRect(x0, L.reelBottom - band, w, band);
 
-          const reelWindow = this.add.graphics().setPosition(mx, my);
-          this.drawGradientPanel(
-            reelWindow,
-            452,
-            170,
-            14,
-            0x000000,
-            0x141416,
-            1,
-            UI.goldDim,
-            2,
-          );
-          const reelInnerShadow = this.add.graphics().setPosition(mx, my);
-          reelInnerShadow.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.55, 0.55, 0, 0);
-          reelInnerShadow.fillRoundedRect(-226, -85, 452, 34, { tl: 14, tr: 14, bl: 0, br: 0 });
-          reelInnerShadow.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.55, 0.55);
-          reelInnerShadow.fillRoundedRect(-226, 51, 452, 34, { tl: 0, tr: 0, bl: 14, br: 14 });
+            // 竖屏 5 行：最上 / 最下一行压暗，表示不在"三线"范围内
+            if (L.dimOuterRows) {
+              shade.fillStyle(0x000000, 0.42);
+              shade.fillRect(x0, L.reelTop, w, L.rowH);
+              shade.fillRect(x0, L.reelBottom - L.rowH, w, L.rowH);
+            }
+          });
+
+          // 三条判奖线（仍是原逻辑：只有正中一条参与判奖，上下两条是装饰）
+          // 画在转轴容器之下（符号的半透明圆盘会把线"压"在后面），只在窗口范围内可见。
+          const xL = L.reelWindows[0][0];
+          const xR = L.reelWindows[L.reelWindows.length - 1][1];
+          const lineW = xR - xL;
+          const lineX = (xL + xR) / 2;
+          const th = Math.max(2, Math.round(L.k * 1.6));
 
           this.paylineTop = this.add
-            .rectangle(mx, my - 64, 448, 2, UI.goldDim, 0.7)
-            .setDepth(5);
-
+            .rectangle(lineX, L.reelY - L.rowH, lineW, th, 0x7fdcff, 0.7)
+            .setDepth(2);
           this.paylineMiddle = this.add
-            .rectangle(mx, my, 448, 5, UI.gold, 0.88)
-            .setDepth(5);
-
+            .rectangle(lineX, L.reelY, lineW, th * 2, 0xbfeaff, 0.88)
+            .setDepth(2);
           this.paylineBottom = this.add
-            .rectangle(mx, my + 64, 448, 2, UI.goldDim, 0.7)
-            .setDepth(5);
-
-          const makeLineLabel = (lx) => {
-            const chip = this.add.graphics().setPosition(lx, my);
-            this.drawGradientPanel(
-              chip,
-              46,
-              24,
-              12,
-              this.shadeColor(UI.ruby, 20),
-              this.shadeColor(UI.rubyDim, -10),
-              0.92,
-              UI.gold,
-              1,
-            );
-            const label = this.add
-              .text(lx, my, "🏵️", {
-                fontSize: "13px",
-                fontStyle: "bold",
-                color: "#f4ead0",
-              })
-              .setOrigin(0.5);
-            return [chip, label];
-          };
-          const leftLabelParts = makeLineLabel(226);
-          const rightLabelParts = makeLineLabel(714);
-
-          this.machineScaleGroup.add([
-            this.machineGlow,
-            outerShell,
-            darkShell,
-            innerPanel,
-            reelWindow,
-            reelInnerShadow,
-            this.paylineTop,
-            this.paylineMiddle,
-            this.paylineBottom,
-            ...leftLabelParts,
-            ...rightLabelParts,
-          ]);
+            .rectangle(lineX, L.reelY + L.rowH, lineW, th, 0x7fdcff, 0.7)
+            .setDepth(2);
         };
 
+        // 转轴窗口的高亮描边：待机 2px 蓝色、转动 3px 亮青、大奖变粗变色
         SlotGame.prototype.setReelFrameStroke = function(reel, strokeWidth, strokeColor) {
           if (!reel || !reel.frame) return;
-          this.drawGradientPanel(
-            reel.frame,
-            LAYOUT.reelFrameW,
-            LAYOUT.reelFrameH,
-            16,
-            this._reelFrameTop,
-            this._reelFrameBottom,
-            1,
-            strokeColor,
-            strokeWidth,
-          );
+          const g = reel.frame;
+          const L = LAYOUT;
+          g.clear();
+          g.lineStyle(strokeWidth * 3, strokeColor, 0.16);
+          g.strokeRect(reel.x0, L.reelTop, reel.w, L.reelH);
+          g.lineStyle(strokeWidth, strokeColor, strokeWidth <= 2 ? 0.55 : 0.95);
+          g.strokeRect(reel.x0 + 1, L.reelTop + 1, reel.w - 2, L.reelH - 2);
         };
 
         SlotGame.prototype.createReels = function() {
-          this._reelFrameTop = this.shadeColor(0x090b0b, 14);
-          this._reelFrameBottom = this.shadeColor(0x090b0b, -20);
+          const L = LAYOUT;
+          const N = L.itemN;
 
-          LAYOUT.reelXs.forEach((x, reelIndex) => {
-            const frame = this.add.graphics().setPosition(x, LAYOUT.reelY).setDepth(2);
-            this.drawGradientPanel(
-              frame,
-              LAYOUT.reelFrameW,
-              LAYOUT.reelFrameH,
-              16,
-              this._reelFrameTop,
-              this._reelFrameBottom,
-              1,
-              UI.goldDim,
-              2,
-            );
+          L.reelWindows.forEach(([x0, x1], reelIndex) => {
+            const w = x1 - x0;
+            const x = (x0 + x1) / 2;
+
+            const frame = this.add.graphics().setDepth(11);
 
             const maskShape = this.add.graphics();
             maskShape.fillStyle(0xffffff);
-            maskShape.fillRect(
-              x - LAYOUT.reelFrameW / 2 + 5,
-              LAYOUT.reelY - LAYOUT.reelFrameH / 2 + 4,
-              LAYOUT.reelFrameW - 10,
-              LAYOUT.reelFrameH - 8,
-            );
+            maskShape.fillRect(x0, L.reelTop, w, L.reelH);
 
             const mask = maskShape.createGeometryMask();
             maskShape.setVisible(false);
 
-            const container = this.add.container(x, LAYOUT.reelY).setDepth(3);
+            const container = this.add.container(x, L.reelY).setDepth(3);
             container.setMask(mask);
-
-            this.machineScaleGroup.add([frame, maskShape, container]);
 
             const items = [];
 
-            for (let i = -2; i <= 2; i++) {
+            for (let i = -N; i <= N; i++) {
               const symbol = Phaser.Utils.Array.GetRandom(SYMBOLS);
 
-              const bg = this.add.circle(0, i * 64, 30, 0x000000, 1);
+              const bg = this.add
+                .circle(0, i * L.rowH, L.discR, 0x000000, 0.5)
+                .setStrokeStyle(2, 0x2b6cff, 0.45);
 
               const txt = this.add
-                .text(0, i * 64, symbol.label, {
-                  fontSize: symbol.label.length > 1 ? "42px" : "52px",
+                .text(0, i * L.rowH, symbol.label, {
+                  fontSize: L.symFont + "px",
                   fontStyle: "bold",
                   color: symbol.color,
                   stroke: "#090b0b",
-                  strokeThickness: 2,
-                  shadow: { offsetX: 0, offsetY: 2, color: "#000000", blur: 3, fill: true },
+                  strokeThickness: Math.max(2, Math.round(L.symFont * 0.05)),
+                  shadow: {
+                    offsetX: 0,
+                    offsetY: Math.round(L.symFont * 0.04),
+                    color: "#000000",
+                    blur: Math.round(L.symFont * 0.07),
+                    fill: true,
+                  },
                 })
                 .setOrigin(0.5);
 
@@ -411,7 +338,7 @@ class SlotGame extends Phaser.Scene {
               items.push({ bg, txt, symbol });
             }
 
-            this.reels.push({
+            const reel = {
               frame,
               container,
               items,
@@ -419,92 +346,104 @@ class SlotGame extends Phaser.Scene {
               intervalEvent: null,
               stopped: true,
               forceStopScheduled: false,
-            });
+              x0,
+              w,
+            };
+            this.reels.push(reel);
+            this.setReelFrameStroke(reel, 2, UI.neon);
           });
         };
 
+        // BALANCE / BET / LAST WIN 三块面板是底图的一部分（原文字已抹掉），这里只叠文字；
+        // 原来的"提示语"改放在面板下方的半透明胶囊里。
         SlotGame.prototype.createBottomPanels = function() {
-          const totalW = LAYOUT.messageW;
-          const gap = 5;
-          const cellW = (totalW - gap * 3) / 4;
-          const startX = LAYOUT.messageX - totalW / 2 + cellW / 2;
-          const xs = [0, 1, 2, 3].map((i) => startX + i * (cellW + gap));
-          const makeDisplayCell = (x) =>
-            this.createPanel(x, LAYOUT.messageY, cellW, LAYOUT.messageH, UI.panel, 0.94, null, this.machineScaleGroup);
+          const P = LAYOUT.plates;
+          const M = LAYOUT.msg;
 
-          makeDisplayCell(xs[0]);
-          makeDisplayCell(xs[3]);
-          this.createPanel(
-            (xs[1] + xs[2]) / 2,
-            LAYOUT.messageY,
-            cellW * 2 + gap,
-            LAYOUT.messageH,
-            UI.panel,
-            0.94,
-            null,
-            this.machineScaleGroup,
-          );
+          const labelStyle = {
+            fontSize: P.labelFont + "px",
+            fontStyle: "bold",
+            fontFamily: "Arial, sans-serif",
+            color: "#4fc3ff",
+            stroke: "#021028",
+            strokeThickness: 3,
+            letterSpacing: 2,
+          };
+          const valueStyle = {
+            fontSize: P.valueFont + "px",
+            fontStyle: "bold",
+            fontFamily: "Arial, sans-serif",
+            color: "#fff3c4",
+            stroke: "#021028",
+            strokeThickness: 4,
+            shadow: { offsetX: 0, offsetY: 2, color: "#000000", blur: 6, fill: true },
+          };
 
-          const balanceLabel = this.add
-            .text(xs[0], LAYOUT.messageY - 10, "BALANCE", {
-              fontSize: "10px",
-              fontStyle: "bold",
-              color: UI.cream,
-              letterSpacing: 1,
-            })
-            .setOrigin(0.5);
-          this.balanceValue = this.add
-            .text(xs[0], LAYOUT.messageY + 10, this.formatInt(this.balance), {
-              fontSize: "17px",
-              fontStyle: "bold",
-              color: "#f4ead0",
-            })
-            .setOrigin(0.5);
+          const make = (i, label, value) => {
+            this.add
+              .text(P.xs[i], P.y + P.labelDy, label, labelStyle)
+              .setOrigin(0.5)
+              .setDepth(12);
+            return this.add
+              .text(P.xs[i], P.y + P.valueDy, value, valueStyle)
+              .setOrigin(0.5)
+              .setDepth(12);
+          };
+
+          this.balanceValue = make(0, "BALANCE", this.formatInt(this.balance));
+          this.betValue = make(1, "BET", this.formatInt(this.bet));
+          this.lastWinValue = make(2, "LAST WIN", this.formatInt(this.lastWin));
+
+          // BET 面板两端的 ◀ ▶：调整下注（与设置弹窗里的 BET 行是同一个 changeBet）
+          const arrow = (x, glyph, delta) => {
+            const t = this.add
+              .text(x, P.y, glyph, {
+                fontSize: "34px",
+                fontStyle: "bold",
+                color: "#4fc3ff",
+                stroke: "#021028",
+                strokeThickness: 3,
+              })
+              .setOrigin(0.5)
+              .setDepth(13);
+            const hit = this.add
+              .rectangle(x, P.y, 70, 80, 0x000000, 0.001)
+              .setDepth(14)
+              .setInteractive({ useHandCursor: true });
+            hit.on("pointerover", () => t.setScale(1.2));
+            hit.on("pointerout", () => t.setScale(1));
+            hit.on("pointerdown", (p, lx, ly, e) => {
+              if (e) e.stopPropagation();
+              this.changeBet(delta);
+            });
+          };
+          arrow(P.xs[1] - P.arrowDx, "◀", -this.betStep);
+          arrow(P.xs[1] + P.arrowDx, "▶", this.betStep);
+
+          // 提示语胶囊
+          const pill = this.add.graphics().setPosition(M.x, M.y).setDepth(12);
+          this.drawGradientPanel(pill, M.w, M.h, M.h / 2, 0x0a1838, 0x040a1c, 0.62, UI.neon, 1.5);
 
           this.messageText = this.add
-            .text((xs[1] + xs[2]) / 2, LAYOUT.messageY, "READY TO SPIN", {
-              fontSize: "16px",
+            .text(M.x, M.y, "READY TO SPIN", {
+              fontSize: 16 * LAYOUT.msgScale + "px",
               fontStyle: "bold",
-              color: "#e8dfc8",
+              fontFamily: "Arial, sans-serif",
+              color: "#e8f1ff",
               align: "center",
-              wordWrap: { width: cellW * 2 + gap - 14 },
             })
-            .setOrigin(0.5);
-
-          const lastWinLabel = this.add
-            .text(xs[3], LAYOUT.messageY - 10, "LAST WIN", {
-              fontSize: "10px",
-              fontStyle: "bold",
-              color: UI.cream,
-              letterSpacing: 1,
-            })
-            .setOrigin(0.5);
-          this.lastWinValue = this.add
-            .text(xs[3], LAYOUT.messageY + 10, this.formatInt(this.lastWin), {
-              fontSize: "17px",
-              fontStyle: "bold",
-              color: "#f4ead0",
-            })
-            .setOrigin(0.5);
-
-          this.machineScaleGroup.add([
-            balanceLabel,
-            this.balanceValue,
-            this.messageText,
-            lastWinLabel,
-            this.lastWinValue,
-          ]);
-
-          // 兼容旧逻辑：投注值现在由控制弹窗中的 BET 行承载。
+            .setOrigin(0.5)
+            .setDepth(13);
         };
 
         SlotGame.prototype.createPaytableButton = function() {
+          const _dockStart = this.focusHideGroup.length;
           const x = LAYOUT.paytableX;
           const y = LAYOUT.paytableY;
           const w = LAYOUT.paytableW;
           const h = LAYOUT.paytableH;
 
-          this.createPanel(x, y, w, h, 0x0c0a08, 0.96, this.focusHideGroup);
+          this.createPanel(x, y, w, h, 0x081020, 0.96, this.focusHideGroup);
 
           this.updateLiveClock();
           this.clockTimer = setInterval(() => this.updateLiveClock(), 250);
@@ -608,7 +547,13 @@ class SlotGame extends Phaser.Scene {
           this.focusHideGroup.push(this.sideTrackLabel);
 
           // 曲目切换时同步刷新曲号
-          bgMusic.onTrackChange(() => this.refreshTrackLabel());
+          if (!window.__trackLabelHooked) {
+            window.__trackLabelHooked = true;
+            bgMusic.onTrackChange(() => {
+              const sc = window.__slotGameScene;
+              if (sc && sc.refreshTrackLabel) sc.refreshTrackLabel();
+            });
+          }
 
           // 双行一体金框按键：PAYTABLE / SETTING → 打开赔率+设置弹窗
           // 宽度收窄约 10%
@@ -620,8 +565,8 @@ class SlotGame extends Phaser.Scene {
               frameW,
               frameH,
               12,
-              this.shadeColor(0x120a04, 14),
-              this.shadeColor(0x120a04, -8),
+              this.shadeColor(0x0c1630, 14),
+              this.shadeColor(0x0c1630, -8),
               0.92,
               strokeColor,
               strokeWidth,
@@ -659,6 +604,25 @@ class SlotGame extends Phaser.Scene {
           ctrlLabel.setInteractive({ useHandCursor: true });
           ctrlLabel.on("pointerdown", openCtrl);
           this.focusHideGroup.push(frame, ctrlLabel);
+
+          // Royale 换皮：面板内部仍按原 170×237 的坐标搭好，整体装进一个容器，
+          // 再按 dock.k 放大并挪到 dock.x/dock.y（原坐标系里的中心是 x,y）。
+          const dk = LAYOUT.dock;
+          this.dockContainer = this.wrapInScaledContainer(
+            this.focusHideGroup.slice(_dockStart),
+            x, y, dk.x, dk.y, dk.k, 20,
+          );
+        };
+
+        // 把一批已创建的对象装进容器：以 (ox,oy) 为原坐标中心，放大 k 倍后落在 (tx,ty)
+        SlotGame.prototype.wrapInScaledContainer = function(items, ox, oy, tx, ty, k, depth) {
+          const c = this.add.container(tx - ox * k, ty - oy * k).setScale(k).setDepth(depth);
+          const list = items.filter(Boolean);
+          list.forEach((o) => {
+            if (o.type === "Text" && o.setResolution) o.setResolution(Math.min(4, Math.ceil(k * 2)));
+          });
+          c.add(list);
+          return c;
         };
 
         SlotGame.prototype.refreshTrackLabel = function() {
@@ -676,176 +640,63 @@ class SlotGame extends Phaser.Scene {
           this.sidePlayPauseBtn.setText(bgMusic.isPlaying() ? "⏸️" : "▶️");
         };
 
+        // 右上：时钟 / 简繁开关（照旧）；拉杆：底图里抠出的球头 + 杆身，代码做下拉动画
         SlotGame.prototype.createRightControls = function() {
-          const lx = LAYOUT.rightPanelX;
-          const pivotY = 355;
+          const L = LAYOUT.lever;
 
-          this.createRightClockToggle(lx);
+          // ---- 时钟 + 简/繁 开关：原 76×82 的按钮搭在 (855,165)，整体缩放后放到 clock.x/y ----
+          this.createRightClockToggle(855);
+          const ck = LAYOUT.clock;
+          this.clockContainer = this.wrapInScaledContainer(
+            [
+              this.rightClockToggleBg,
+              this.rightClockText,
+              this.modeChipBg,
+              this.modeLabelSimple,
+              this.modeLabelComplex,
+              this.rightClockToggleHit,
+            ],
+            855, 165, ck.x, ck.y, ck.k, 20,
+          );
 
-          // 拉杆：赌场风机械组件（金边底座 + 抛光金属杆 + 红宝石球头）
-          // 槽体：暗金托板 + 深槽 + 双侧铆钉
-          const plate = this.add
-            .rectangle(lx, 318, 44, 128, 0x1a1408)
-            .setStrokeStyle(2, 0xc9a227);
-          const plateInner = this.add
-            .rectangle(lx, 318, 36, 118, 0x0c0a06)
-            .setStrokeStyle(1, 0x5c4818);
-          const grooveOuter = this.add
-            .rectangle(lx, 315, 18, 108, 0x2a2210)
-            .setStrokeStyle(1, 0x8a7040);
-          const grooveSlot = this.add
-            .rectangle(lx, 315, 8, 100, 0x050403)
-            .setStrokeStyle(1, 0x3a3010);
-          const grooveHighlight = this.add
-            .rectangle(lx + 5, 315, 2, 96, 0xffe8a0)
-            .setAlpha(0.28);
-          // 槽两侧装饰铆钉
-          [[lx - 14, 270], [lx + 14, 270], [lx - 14, 360], [lx + 14, 360]].forEach(([rx, ry]) => {
-            this.add.circle(rx, ry, 3.5, 0x3a3010).setStrokeStyle(1, 0xd4af37);
-            this.add.circle(rx - 0.8, ry - 0.8, 1.2, 0xffe8a0, 0.45);
-          });
+          // ---- 拉杆 ----
+          this.leverShaft = this.add
+            .image(L.shaftX, L.baseY, LAYOUT.shaftKey)
+            .setOrigin(0.5, 1)
+            .setDepth(12);
+          this._shaftW = this.leverShaft.width;
 
-          // 底部固定轴：多层金属环 + 中心螺钉感
-          this.add.circle(lx, pivotY, 22, 0x2a2210).setStrokeStyle(2, 0x8a7040);
-          this.add.circle(lx, pivotY, 17, 0x1a1a1a).setStrokeStyle(2, 0xffd700);
-          this.add.circle(lx, pivotY, 11, 0x4a4a4a).setStrokeStyle(1, 0xc0c0c0);
-          this.add.circle(lx, pivotY, 6, 0x222222).setStrokeStyle(1, 0xffd700);
-          this.add.circle(lx - 1.5, pivotY - 1.5, 2, 0xffffff, 0.5);
+          this.leverGlow = this.add
+            .circle(L.ballX, L.ballY, L.ballR + 12, UI.neon, 1)
+            .setBlendMode(Phaser.BlendModes.ADD)
+            .setAlpha(0)
+            .setDepth(12.5);
 
-          // 拉杆容器（绕底部轴旋转）——动画逻辑不变
-          this.leverContainer = this.add.container(lx, pivotY);
+          const ballTex = this.textures.get(LAYOUT.ballKey).getSourceImage();
+          const ballBoxX0 = L.ballX - ballTex.width / 2; // 抠图以球心为水平中心
+          this.leverBall = this.add
+            .image(L.ballX, L.ballY, LAYOUT.ballKey)
+            .setOrigin(
+              (L.ballX - ballBoxX0) / ballTex.width,
+              (L.ballY - (L.collarBottom - ballTex.height)) / ballTex.height,
+            )
+            .setDepth(13);
 
-          // 杆身阴影（偏右下，增强立体）
-          const armShadow = this.add
-            .rectangle(2.5, -46, 16, 100, 0x000000, 0.45)
-            .setOrigin(0.5);
+          // 拉杆动画的进度对象：p=0 待机，p=1 拉到底
+          this._leverTw = { p: 0 };
 
-          // 杆身外金边
-          const armRim = this.add
-            .rectangle(0, -48, 14, 98, 0xc9a227)
-            .setOrigin(0.5);
-
-          // 杆身主金属
-          const arm = this.add
-            .rectangle(0, -48, 11, 94, 0x6e6e72)
-            .setOrigin(0.5);
-
-          // 杆身渐层高光 / 暗边
-          const armShine = this.add
-            .rectangle(-2.5, -48, 3.5, 88, 0xf5f5f7)
-            .setOrigin(0.5)
-            .setAlpha(0.55);
-          const armEdge = this.add
-            .rectangle(3.5, -48, 2.5, 90, 0x2a2a2e)
-            .setOrigin(0.5)
-            .setAlpha(0.65);
-
-          // 杆身金色环箍（三道，更像真赌场拉杆）
-          const collarYs = [-18, -48, -78];
-          const collars = collarYs.map((cy) => {
-            const outer = this.add
-              .rectangle(0, cy, 18, 7, 0x8a7040)
-              .setOrigin(0.5)
-              .setStrokeStyle(1, 0xffd700);
-            const inner = this.add
-              .rectangle(0, cy, 16, 3, 0xffe566)
-              .setOrigin(0.5)
-              .setAlpha(0.55);
-            return [outer, inner];
-          });
-
-          // 球头：外金环 → 深红金属 → 亮红芯 → 多层高光
-          // （外金环的默认色也是 hover/离开热区时的"复位色"，务必和下方
-          //  leverHit 的 pointerout 处理保持一致，避免第一次 hover 后颜色回不去）
-          this.leverHandle = this.add
-            .circle(0, -100, 26, LEVER_HANDLE_IDLE_FILL)
-            .setStrokeStyle(2, 0xffd700);
-
-          const handleGoldRing = this.add
-            .circle(0, -100, 22, 0xb8860b)
-            .setStrokeStyle(1.5, 0xffe566);
-
-          const handleBody = this.add.circle(0, -100, 18, 0x6b0000);
-
-          this.leverHandleInner = this.add.circle(0, -100, 12, 0xb00018);
-
-          const handleCore = this.add.circle(0, -100, 6, 0xe01830);
-
-          // 主高光（左上）
-          const handleHighlight = this.add
-            .circle(-7, -108, 7, 0xffffff, 0.75);
-          // 次高光
-          const handleHighlight2 = this.add
-            .circle(6, -94, 3.5, 0xffe8a0, 0.4);
-          // 底部反光
-          const handleBounce = this.add
-            .circle(2, -90, 5, 0xff6b6b, 0.22);
-
-          // 球头底部与杆身衔接的小金颈
-          const neck = this.add
-            .rectangle(0, -84, 12, 10, 0xc9a227)
-            .setOrigin(0.5);
-          const neckInner = this.add
-            .rectangle(0, -84, 8, 6, 0x5c4010)
-            .setOrigin(0.5);
-
-          const leverParts = [
-            armShadow,
-            armRim,
-            arm,
-            armShine,
-            armEdge,
-            neck,
-            neckInner,
-            this.leverHandle,
-            handleGoldRing,
-            handleBody,
-            this.leverHandleInner,
-            handleCore,
-            handleHighlight,
-            handleHighlight2,
-            handleBounce,
-          ];
-          collars.forEach(([o, i]) => leverParts.push(o, i));
-          this.leverContainer.add(leverParts);
-          this.leverContainer.setAngle(-18); // 略微倾斜的“待拉”姿态
-
-          // 手柄高光缓慢呼吸
-          this.tweens.add({
-            targets: handleHighlight,
-            alpha: 0.35,
-            duration: 1100,
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.easeInOut",
-          });
-          this.tweens.add({
-            targets: handleCore,
-            alpha: 0.75,
-            duration: 1400,
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.easeInOut",
-          });
-
-          // 手（默认隐藏，从侧上方飞入抓住手柄）
-          this.handRestX = lx + 55;
-          this.handRestY = 205;
-          this.handGripX = lx - 8;
-          this.handGripY = 263;
-
+          // 手（默认隐藏，从侧上方飞入抓住球头）
           this.leverHand = this.add
-            .text(this.handRestX, this.handRestY, "✋", {
-              fontSize: "40px",
-            })
+            .text(L.restX, L.restY, "✋", { fontSize: L.handFont + "px" })
             .setOrigin(0.35, 0.35)
             .setAlpha(0)
             .setDepth(20)
             .setAngle(-25);
 
-          // 拉杆可点击热区
+          // 可点击热区
           this.leverHit = this.add
-            .rectangle(lx, 295, 120, 150, 0x000000, 0.01)
+            .rectangle(L.hit.x, L.hit.y, L.hit.w, L.hit.h, 0x000000, 0.01)
+            .setDepth(14)
             .setInteractive({ useHandCursor: true });
 
           // 拉杆 / SPIN / 空格 统一：一点即转，转动中再点急停
@@ -854,22 +705,42 @@ class SlotGame extends Phaser.Scene {
             this.sfx.warmup();
             this.handleSpinInput();
           });
-
           this.leverHit.on("pointerover", () => {
             if (this.leverState === "up" && !this.isSpinning) {
-              this.leverHandle.setFillStyle(0xffd700);
-              this.leverHandle.setStrokeStyle(3, 0xffffff);
+              this.leverGlow.setAlpha(0.3);
             }
           });
-
           this.leverHit.on("pointerout", () => {
-            if (this.leverState !== "down") {
-              this.leverHandle.setFillStyle(LEVER_HANDLE_IDLE_FILL);
-              this.leverHandle.setStrokeStyle(2, 0xffd700);
-            }
+            if (this.leverState !== "down") this.leverGlow.setAlpha(0);
           });
 
-          // 拉杆整体（底座、槽、轴、杆身、热区、提示文字）不加入放大分组，
+          this.setLeverProgress(0);
+        };
+
+        // 按进度摆放拉杆：球头沿杆下移并略放大，杆身随之缩短（模拟朝玩家拉下的透视）
+        SlotGame.prototype.setLeverProgress = function(p) {
+          const L = LAYOUT.lever;
+          if (!this.leverBall || !this.leverShaft) return;
+
+          const ballY = L.ballY + L.drop * p;
+          const s = 1 + 0.12 * Math.max(0, p);
+          this.leverBall.setPosition(L.ballX, ballY).setScale(s);
+          if (this.leverGlow) this.leverGlow.setPosition(L.ballX, ballY).setScale(s);
+
+          const collarBottom = ballY + (L.collarBottom - L.ballY) * s;
+          this.leverShaft.setDisplaySize(
+            this._shaftW,
+            Math.max(6, L.baseY - collarBottom + 4),
+          );
+
+          if (this._handFollow && this.leverHand) {
+            this.leverHand.setPosition(
+              L.ballX + L.gripDx,
+              ballY + L.gripDy + L.ballR * 0.3 * Math.max(0, p),
+            );
+            this.leverHand.setAngle(-4 + 36 * Math.max(0, p));
+            this.leverHand.setScale(0.96 - 0.08 * Math.max(0, p));
+          }
         };
 
         SlotGame.prototype.drawRoundedPanel = function(gfx, w, h, radius, strokeColor, strokeWidth, fillColor, fillAlpha = 1) {
@@ -905,7 +776,7 @@ class SlotGame extends Phaser.Scene {
             btnRadius,
             UI.ruby,
             2,
-            0x1a140c,
+            0x101c3a,
             0.92,
           );
 
@@ -953,7 +824,7 @@ class SlotGame extends Phaser.Scene {
               btnRadius,
               UI.ruby,
               3.2,
-              0x1a140c,
+              0x101c3a,
               0.92,
             );
           });
@@ -965,7 +836,7 @@ class SlotGame extends Phaser.Scene {
               btnRadius,
               UI.ruby,
               2,
-              0x1a140c,
+              0x101c3a,
               0.92,
             );
           });
@@ -983,8 +854,8 @@ class SlotGame extends Phaser.Scene {
         };
 
         SlotGame.prototype.createSettingsModal = function() {
-          const cx = GAME_WIDTH / 2;
-          const cy = GAME_HEIGHT / 2;
+          const cx = LAYOUT.width / 2;
+          const cy = LAYOUT.height / 2;
           const panelW = 560;
           const panelH = 400;
           const top = cy - panelH / 2;
@@ -997,8 +868,10 @@ class SlotGame extends Phaser.Scene {
           const children = [];
 
           const overlayKey = "settingsOverlayGradient";
+          // 横竖屏画布尺寸不同：场景重启时重画遮罩纹理
+          if (this.textures.exists(overlayKey)) this.textures.remove(overlayKey);
           if (!this.textures.exists(overlayKey)) {
-            const rt = this.textures.createCanvas(overlayKey, GAME_WIDTH, GAME_HEIGHT);
+            const rt = this.textures.createCanvas(overlayKey, LAYOUT.width, LAYOUT.height);
             const ctx = rt.getContext();
             const grad = ctx.createRadialGradient(
               cx, cy, 0,
@@ -1008,7 +881,7 @@ class SlotGame extends Phaser.Scene {
             grad.addColorStop(0.55, "rgba(0,0,0,0.6)");
             grad.addColorStop(1, "rgba(0,0,0,0.86)");
             ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            ctx.fillRect(0, 0, LAYOUT.width, LAYOUT.height);
             rt.refresh();
           }
           const overlay = this.add
@@ -1034,8 +907,8 @@ class SlotGame extends Phaser.Scene {
             panelW,
             panelH,
             20,
-            this.shadeColor(0x0e0a06, 16),
-            this.shadeColor(0x0e0a06, -10),
+            this.shadeColor(0x0a1226, 16),
+            this.shadeColor(0x0a1226, -10),
             0.98,
             UI.gold,
             2,
@@ -1108,8 +981,8 @@ class SlotGame extends Phaser.Scene {
               w,
               h,
               8,
-              this.shadeColor(0x1a140c, 10),
-              this.shadeColor(0x1a140c, -8),
+              this.shadeColor(0x101c3a, 10),
+              this.shadeColor(0x101c3a, -8),
               0.95,
               UI.goldDim,
               1,
@@ -1398,7 +1271,15 @@ class SlotGame extends Phaser.Scene {
             this.toggleSettingsModal(false);
           });
 
-          this.settingsModalGroup.add(children);
+          // 弹窗内容按 modalScale 放大（遮罩不放大，保持铺满画布）
+          const mk = LAYOUT.modalScale;
+          const overlayObj = children.shift();
+          children.forEach((o) => {
+            if (o.type === "Text" && o.setResolution) o.setResolution(Math.min(4, Math.ceil(mk * 1.5)));
+          });
+          const inner = this.add.container(cx * (1 - mk), cy * (1 - mk)).setScale(mk);
+          inner.add(children);
+          this.settingsModalGroup.add([overlayObj, inner]);
         };
 
         SlotGame.prototype.toggleSettingsModal = function(show) {
@@ -1442,22 +1323,29 @@ class SlotGame extends Phaser.Scene {
           this.leverState = "down";
           this.sfx.leverGrip();
 
-          this.tweens.killTweensOf(this.leverHand);
-          this.tweens.killTweensOf(this.leverContainer);
+          const L = LAYOUT.lever;
+          const hand = this.leverHand;
+          const tw = this._leverTw;
+          const upd = () => this.setLeverProgress(tw.p);
 
-          // 从侧上方飞入并握住
-          const midX = (this.handRestX + this.handGripX) / 2 + 8;
-          const midY = (this.handRestY + this.handGripY) / 2 - 18;
+          this.tweens.killTweensOf(hand);
+          this.tweens.killTweensOf(tw);
+          this._handFollow = false;
 
-          this.leverHand.setText("✋");
-          this.leverHand.setAlpha(0);
-          this.leverHand.setPosition(this.handRestX, this.handRestY);
-          this.leverHand.setScale(0.85);
-          this.leverHand.setAngle(-40);
+          const gx = L.ballX + L.gripDx;
+          const gy = L.ballY + L.gripDy;
+          const midX = (L.restX + gx) / 2 + L.ballR * 0.25;
+          const midY = (L.restY + gy) / 2 - L.ballR * 0.5;
+
+          hand.setText("✋");
+          hand.setAlpha(0);
+          hand.setPosition(L.restX, L.restY);
+          hand.setScale(0.85);
+          hand.setAngle(-40);
 
           // 1) 淡入 + 弧线接近
           this.tweens.add({
-            targets: this.leverHand,
+            targets: hand,
             alpha: 1,
             scale: 1.05,
             duration: 90,
@@ -1465,75 +1353,51 @@ class SlotGame extends Phaser.Scene {
           });
 
           this.tweens.add({
-            targets: this.leverHand,
+            targets: hand,
             x: midX,
             y: midY,
             angle: -18,
             duration: 120,
             ease: "Sine.easeOut",
             onComplete: () => {
-              // 2) 落到手柄并握紧
+              // 2) 落到球头并握紧
               this.tweens.add({
-                targets: this.leverHand,
-                x: this.handGripX,
-                y: this.handGripY,
+                targets: hand,
+                x: gx,
+                y: gy,
                 angle: -4,
                 scale: 0.96,
                 duration: 110,
                 ease: "Cubic.easeInOut",
                 onComplete: () => {
-                  this.leverHand.setText("✊");
+                  hand.setText("✊");
                   this.sfx.leverPull();
+                  this._handFollow = true;
 
                   // 3) 微抬蓄力后重压拉下
                   this.tweens.add({
-                    targets: this.leverHand,
-                    y: this.handGripY - 5,
-                    scale: 0.94,
+                    targets: tw,
+                    p: -0.07,
                     duration: 50,
                     ease: "Sine.easeOut",
+                    onUpdate: upd,
                     onComplete: () => {
                       this.tweens.add({
-                        targets: this.leverHand,
-                        x: this.handGripX + 14,
-                        y: this.handGripY + 72,
-                        angle: 32,
-                        scale: 0.88,
+                        targets: tw,
+                        p: 1,
                         duration: 260,
                         ease: "Cubic.easeIn",
-                        onComplete: () => {
-                          this.tweens.add({
-                            targets: this.leverHand,
-                            y: this.handGripY + 68,
-                            scale: 0.92,
-                            duration: 90,
-                            ease: "Sine.easeOut",
-                          });
-                        },
-                      });
-                    },
-                  });
-
-                  this.tweens.add({
-                    targets: this.leverContainer,
-                    angle: -22,
-                    duration: 50,
-                    ease: "Sine.easeOut",
-                    onComplete: () => {
-                      this.tweens.add({
-                        targets: this.leverContainer,
-                        angle: 55,
-                        duration: 260,
-                        ease: "Cubic.easeIn",
+                        onUpdate: upd,
                         onComplete: () => {
                           this.cameras.main.shake(110, 0.008);
 
                           this.tweens.add({
-                            targets: this.leverContainer,
-                            angle: 48,
+                            targets: tw,
+                            p: 0.93,
                             duration: 90,
                             yoyo: true,
                             ease: "Sine.easeOut",
+                            onUpdate: upd,
                           });
 
                           if (thenStart) {
@@ -1553,24 +1417,29 @@ class SlotGame extends Phaser.Scene {
           this.leverState = "up";
           this.sfx.leverReset();
 
-          this.tweens.killTweensOf(this.leverHand);
-          this.tweens.killTweensOf(this.leverContainer);
+          const L = LAYOUT.lever;
+          const hand = this.leverHand;
+          const tw = this._leverTw;
+
+          this.tweens.killTweensOf(hand);
+          this.tweens.killTweensOf(tw);
+          this._handFollow = false;
 
           // 松手：张开 → 滑开淡出
-          this.leverHand.setText("✋");
+          hand.setText("✋");
 
           this.tweens.add({
-            targets: this.leverHand,
+            targets: hand,
             scale: 1.05,
             angle: 8,
             duration: 100,
             ease: "Sine.easeOut",
             onComplete: () => {
               this.tweens.add({
-                targets: this.leverHand,
+                targets: hand,
                 alpha: 0,
-                x: this.handRestX,
-                y: this.handRestY - 10,
+                x: L.restX,
+                y: L.restY - L.ballR * 0.3,
                 angle: -30,
                 scale: 0.9,
                 duration: 320,
@@ -1585,15 +1454,16 @@ class SlotGame extends Phaser.Scene {
             },
           });
 
+          // 拉杆弹回
           this.tweens.add({
-            targets: this.leverContainer,
-            angle: -18,
+            targets: tw,
+            p: 0,
             duration: 420,
             ease: "Back.easeOut",
+            onUpdate: () => this.setLeverProgress(tw.p),
           });
 
-          this.leverHandle.setFillStyle(LEVER_HANDLE_IDLE_FILL);
-          this.leverHandle.setStrokeStyle(2, 0xffd700);
+          if (this.leverGlow) this.leverGlow.setAlpha(0);
         };
 
         SlotGame.prototype.startSpin = function() {
@@ -1610,24 +1480,22 @@ class SlotGame extends Phaser.Scene {
 
           // 自动模式等非手动拉杆路径：若拉杆未下，补一段简短甩下动画
           if (this.leverState !== "down") {
+            const LV = LAYOUT.lever;
+            const tw = this._leverTw;
             this.leverState = "down";
             this.sfx.leverPull();
+            this.tweens.killTweensOf(this.leverHand);
+            this.tweens.killTweensOf(tw);
             this.leverHand.setText("✊");
             this.leverHand.setAlpha(1);
-            this.leverHand.setPosition(this.handGripX, this.handGripY);
+            this.leverHand.setPosition(LV.ballX + LV.gripDx, LV.ballY + LV.gripDy);
+            this._handFollow = true;
             this.tweens.add({
-              targets: this.leverContainer,
-              angle: 48,
+              targets: tw,
+              p: 1,
               duration: 200,
               ease: "Cubic.easeIn",
-            });
-            this.tweens.add({
-              targets: this.leverHand,
-              y: this.handGripY + 70,
-              x: this.handGripX + 12,
-              angle: 28,
-              scale: 0.9,
-              duration: 200,
+              onUpdate: () => this.setLeverProgress(tw.p),
             });
           }
 
@@ -1639,7 +1507,7 @@ class SlotGame extends Phaser.Scene {
 
             reel.stopped = true;
             reel.forceStopScheduled = false;
-            reel.container.y = this.getReelCenterY();
+            reel.container.y = LAYOUT.reelY;
           });
 
           this.isSpinning = true;
@@ -1674,6 +1542,7 @@ class SlotGame extends Phaser.Scene {
         SlotGame.prototype.animateBalanceDecrease = function(amount) {
           const startBalance = this.balance;
           const endBalance = this.balance - amount;
+          const P = LAYOUT.plates;
 
           this.balance = endBalance;
 
@@ -1686,9 +1555,9 @@ class SlotGame extends Phaser.Scene {
               fitTextToBox(
                 this.balanceValue,
                 this.formatInt(tween.getValue()),
-                LAYOUT.balanceW - 35,
-                21,
-                13,
+                P.valueMaxW,
+                P.valueFont,
+                P.valueMinFont,
               );
             },
             onComplete: () => this.updateDisplay(),
@@ -1704,6 +1573,9 @@ class SlotGame extends Phaser.Scene {
 
         SlotGame.prototype.startReelSpin = function(reel, index) {
           const settings = this.speedSettings[this.mode];
+          const L = LAYOUT;
+          const N = L.itemN;
+          const stepScale = L.rowH / 64; // 原速度参数是按 64px 行高调的
 
           if (reel.intervalEvent) {
             reel.intervalEvent.remove(false);
@@ -1713,7 +1585,7 @@ class SlotGame extends Phaser.Scene {
           reel.stopped = false;
           reel.forceStopScheduled = false;
 
-          this.setReelFrameStroke(reel, 3, UI.goldBright);
+          this.setReelFrameStroke(reel, 3, 0x9fe3ff);
 
           const stopDelay = settings.duration + index * 320;
           const decelWindow = 260; // 停止前的减速窗口（毫秒），让转轮"滑行进站"而不是硬停
@@ -1731,21 +1603,22 @@ class SlotGame extends Phaser.Scene {
                 remaining < decelWindow
                   ? Math.max(0.25, remaining / decelWindow)
                   : 1;
-              const step = settings.step * decelRatio;
+              const step = settings.step * decelRatio * stepScale;
 
               reel.items.forEach((item) => {
                 item.txt.y += step;
                 item.bg.y += step;
 
-                if (item.txt.y > 128) {
+                // 滚出窗口下沿：换个随机符号，接回最上面（保持行距不变）
+                if (item.txt.y > N * L.rowH) {
                   const symbol = Phaser.Utils.Array.GetRandom(SYMBOLS);
+                  const ny = item.txt.y - (2 * N + 1) * L.rowH;
 
                   item.symbol = symbol;
-                  item.txt.y = -128;
-                  item.bg.y = -128;
+                  item.txt.y = ny;
+                  item.bg.y = ny;
                   item.txt.setText(symbol.label);
                   item.txt.setColor(symbol.color);
-                  item.txt.setFontSize(symbol.label.length > 1 ? 42 : 52);
                 }
               });
             },
@@ -1760,6 +1633,9 @@ class SlotGame extends Phaser.Scene {
         SlotGame.prototype.stopReel = function(reel, index) {
           if (reel.stopped) return;
 
+          const L = LAYOUT;
+          const N = L.itemN;
+
           reel.stopped = true;
 
           if (reel.intervalEvent) {
@@ -1772,16 +1648,16 @@ class SlotGame extends Phaser.Scene {
 
           reel.items.forEach((item, i) => {
             const randomSymbol = Phaser.Utils.Array.GetRandom(SYMBOLS);
+            const yy = (i - N) * L.rowH;
 
             item.symbol = randomSymbol;
-            item.txt.y = (i - 2) * 64;
-            item.bg.y = (i - 2) * 64;
+            item.txt.y = yy;
+            item.bg.y = yy;
             item.txt.setText(randomSymbol.label);
             item.txt.setColor(randomSymbol.color);
-            item.txt.setFontSize(randomSymbol.label.length > 1 ? 42 : 52);
 
             // 非中奖行的符号淡入落位，避免"瞬间贴图切换"的生硬感
-            if (i !== 2) {
+            if (i !== N) {
               item.txt.setAlpha(0.35);
               this.tweens.add({
                 targets: item.txt,
@@ -1792,12 +1668,11 @@ class SlotGame extends Phaser.Scene {
             }
           });
 
-          const center = reel.items[2];
+          const center = reel.items[N];
 
           center.symbol = finalSymbol;
           center.txt.setText(finalSymbol.label);
           center.txt.setColor(finalSymbol.color);
-          center.txt.setFontSize(finalSymbol.label.length > 1 ? 42 : 52);
           center.txt.y = 0;
           center.bg.y = 0;
 
@@ -1805,7 +1680,7 @@ class SlotGame extends Phaser.Scene {
 
           this.tweens.add({
             targets: reel.container,
-            y: this.getReelCenterY() + 7,
+            y: L.reelY + L.bounce,
             duration: 120,
             ease: "Sine.easeOut",
             yoyo: true,
@@ -1818,7 +1693,7 @@ class SlotGame extends Phaser.Scene {
             yoyo: true,
           });
 
-          this.setReelFrameStroke(reel, 2, UI.goldDim);
+          this.setReelFrameStroke(reel, 2, UI.neon);
 
           this.stoppedReelsCount++;
 
@@ -1840,7 +1715,7 @@ class SlotGame extends Phaser.Scene {
 
         SlotGame.prototype.checkWin = function() {
           const [a, b, c] = this.reels.map((reel) => {
-            const center = reel.items[2];
+            const center = reel.items[LAYOUT.itemN];
             return center.symbol || reel.value;
           });
 
@@ -2008,28 +1883,29 @@ class SlotGame extends Phaser.Scene {
 
         SlotGame.prototype.fireworksBurst = function(amount) {
           const colors = ["#ffd700", "#ff6b6b", "#4ecdc4", "#ffe66d", "#ff9ff3", "#54a0ff", "#ffffff"];
+          const F = LAYOUT.fx;
           const batch = 12;
           const batches = Math.ceil(amount / batch);
           for (let b = 0; b < batches; b++) {
             this.time.delayedCall(b * 55, () => {
               const count = Math.min(batch, amount - b * batch);
-              const ox = Phaser.Math.Between(380, 560);
-              const oy = Phaser.Math.Between(160, 240);
+              const ox = F.cx + Phaser.Math.Between(-90, 90) * F.k;
+              const oy = F.cy + Phaser.Math.Between(-80, 0) * F.k;
               for (let i = 0; i < count; i++) {
                 const col = colors[i % colors.length];
                 const p = this.add
                   .text(ox, oy, "✦", {
-                    fontSize: `${Phaser.Math.Between(14, 26)}px`,
+                    fontSize: `${Math.round(Phaser.Math.Between(14, 26) * F.k)}px`,
                     color: col,
                   })
                   .setOrigin(0.5)
                   .setDepth(60);
                 const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-                const dist = Phaser.Math.Between(80, 220);
+                const dist = Phaser.Math.Between(80, 220) * F.k;
                 this.tweens.add({
                   targets: p,
                   x: ox + Math.cos(angle) * dist,
-                  y: oy + Math.sin(angle) * dist * 0.7 - Phaser.Math.Between(40, 120),
+                  y: oy + Math.sin(angle) * dist * 0.7 - Phaser.Math.Between(40, 120) * F.k,
                   alpha: 0,
                   scale: Phaser.Math.FloatBetween(0.4, 1.4),
                   angle: Phaser.Math.Between(-180, 180),
@@ -2043,13 +1919,14 @@ class SlotGame extends Phaser.Scene {
         };
 
         SlotGame.prototype.showWinText = function(text, color) {
+          const W = LAYOUT.win;
           const winText = this.add
-            .text(470, 145, text, {
-              fontSize: "60px",
+            .text(W.x, W.y, text, {
+              fontSize: W.font + "px",
               fontStyle: "bold",
               color,
               stroke: "#000000",
-              strokeThickness: 9,
+              strokeThickness: W.stroke,
               shadow: {
                 offsetX: 0,
                 offsetY: 0,
@@ -2058,7 +1935,8 @@ class SlotGame extends Phaser.Scene {
                 fill: true,
               },
             })
-            .setOrigin(0.5);
+            .setOrigin(0.5)
+            .setDepth(50);
 
           this.tweens.add({
             targets: winText,
@@ -2071,6 +1949,7 @@ class SlotGame extends Phaser.Scene {
         };
 
         SlotGame.prototype.coinExplosion = function(amount) {
+          const F = LAYOUT.fx;
           const batchSize = 15;
           const batches = Math.ceil(amount / batchSize);
 
@@ -2081,22 +1960,23 @@ class SlotGame extends Phaser.Scene {
               for (let i = 0; i < count; i++) {
                 const coin = this.add
                   .text(
-                    Phaser.Math.Between(350, 590),
-                    Phaser.Math.Between(200, 310),
+                    Phaser.Math.Between(F.coinX0, F.coinX1),
+                    Phaser.Math.Between(F.coinY0, F.coinY1),
                     "●",
                     {
-                      fontSize: `${Phaser.Math.Between(18, 30)}px`,
+                      fontSize: `${Math.round(Phaser.Math.Between(18, 30) * F.k)}px`,
                       color: "#ffd700",
                       stroke: "#7a3b00",
                       strokeThickness: 1,
                     },
                   )
-                  .setOrigin(0.5);
+                  .setOrigin(0.5)
+                  .setDepth(50);
 
                 this.tweens.add({
                   targets: coin,
-                  x: coin.x + Phaser.Math.Between(-300, 300),
-                  y: coin.y - Phaser.Math.Between(90, 240),
+                  x: coin.x + Phaser.Math.Between(-300, 300) * F.k,
+                  y: coin.y - Phaser.Math.Between(90, 240) * F.k,
                   alpha: 0,
                   scale: 1.8,
                   angle: Phaser.Math.Between(-360, 360),
@@ -2110,38 +1990,47 @@ class SlotGame extends Phaser.Scene {
         };
 
         SlotGame.prototype.updateDisplay = function(skipSave) {
-          if (this.balanceValue) {
-            fitTextToBox(
-              this.balanceValue,
-              this.formatInt(this.balance),
-              LAYOUT.balanceW - 35,
-              21,
-              13,
-            );
-          }
+          const P = LAYOUT.plates;
+          const J = LAYOUT.jackpot;
+
+          fitTextToBox(
+            this.balanceValue,
+            this.formatInt(this.balance),
+            P.valueMaxW,
+            P.valueFont,
+            P.valueMinFont,
+          );
+
           if (this.modalBetValue) {
             this.modalBetValue.setText(this.formatInt(this.bet));
           }
-          if (this.lastWinValue) {
+
+          if (this.betValue) {
             fitTextToBox(
-              this.lastWinValue,
-              this.formatInt(this.lastWin),
-              LAYOUT.lastWinW - 35,
-              21,
-              13,
+              this.betValue,
+              this.formatInt(this.bet),
+              P.valueMaxW - 90,
+              P.valueFont,
+              P.valueMinFont,
             );
           }
-          if (this.jackpotText) {
-            fitTextToBox(
-              this.jackpotText,
-              `🏵️ Jackpot ${this.formatMoney(this.jackpotValue)}`,
-              320,
-              24,
-              16,
-            );
-          }
-          // 仅竖屏同步 HTML HUD；横屏不碰
-          if (this.portraitMode) this.syncPortraitHUD();
+
+          fitTextToBox(
+            this.lastWinValue,
+            this.formatInt(this.lastWin),
+            P.valueMaxW,
+            P.valueFont,
+            P.valueMinFont,
+          );
+
+          fitTextToBox(
+            this.jackpotText,
+            `🏵️ Jackpot ${this.formatMoney(this.jackpotValue)}`,
+            J.maxW,
+            J.font,
+            J.minFont,
+          );
+
           if (!skipSave) this.saveGameState();
         };
 
@@ -2161,6 +2050,9 @@ class SlotGame extends Phaser.Scene {
           if (this.modalBetValue) {
             this.modalBetValue.setText(this.formatInt(this.bet));
           }
+          if (this.betValue) {
+            this.betValue.setText(this.formatInt(this.bet));
+          }
           this.saveGameState();
         };
 
@@ -2170,18 +2062,14 @@ class SlotGame extends Phaser.Scene {
         SlotGame.prototype.formatMoney = SlotGame.prototype.formatInt;
 
         SlotGame.prototype.setMessage = function(value, baseFontSize = 20) {
-          if (this.messageText) {
-            fitTextToBox(
-              this.messageText,
-              value,
-              LAYOUT.messageW - 28,
-              baseFontSize,
-              12,
-            );
-          }
-          if (this.portraitMode && typeof window.syncPortraitHUD === "function") {
-            window.syncPortraitHUD({ message: value });
-          }
+          const s = LAYOUT.msgScale;
+          fitTextToBox(
+            this.messageText,
+            value,
+            LAYOUT.messageW - 28,
+            baseFontSize * s,
+            12 * s,
+          );
         };
 
         SlotGame.prototype.toggleAutoPlay = function() {
@@ -2276,6 +2164,7 @@ class SlotGame extends Phaser.Scene {
           );
         };
 
+        // 「简」：藏起左侧音乐 / 设置面板；「繁」：显示它（换皮后机身是整张底图，不再放大 115%）
         SlotGame.prototype.toggleFocusMode = function(silent) {
           this.focusMode = !this.focusMode;
           if (!silent) this.sfx.click();
@@ -2284,30 +2173,6 @@ class SlotGame extends Phaser.Scene {
             if (obj) obj.setVisible(!this.focusMode);
           });
           this.refreshModeLabel();
-
-          const scale = this.focusMode ? 1.15 : 1;
-          const cx = this.machineScaleAnchor.x;
-          const cy = this.machineScaleAnchor.y;
-          const targetProps = {
-            scaleX: scale,
-            scaleY: scale,
-            x: cx * (1 - scale),
-            y: cy * (1 - scale),
-          };
-          if (silent) {
-            this.machineScaleGroup.setScale(scale, scale);
-            this.machineScaleGroup.setPosition(
-              targetProps.x,
-              targetProps.y
-            );
-          } else {
-            this.tweens.add({
-              targets: this.machineScaleGroup,
-              ...targetProps,
-              duration: 260,
-              ease: "Sine.easeInOut",
-            });
-          }
         };
 
         SlotGame.prototype.updateSpeedButtons = function() {
@@ -2324,10 +2189,10 @@ class SlotGame extends Phaser.Scene {
         };
 
         SlotGame.prototype.createAmbientAnimations = function() {
-          this.machineGlow.setAlpha(0.07);
+          this.machineGlow.setAlpha(0.15);
           this.tweens.add({
             targets: this.machineGlow,
-            alpha: 0.13,
+            alpha: 0.4,
             duration: 2200,
             yoyo: true,
             repeat: -1,
@@ -2347,186 +2212,6 @@ class SlotGame extends Phaser.Scene {
               repeat: -1,
               ease: "Sine.easeInOut",
             });
-          }
-        };
-
-
-        SlotGame.prototype.getReelCenterY = function() {
-          if (this.portraitMode && this._portraitReelLayout) {
-            return this._portraitReelLayout.cy;
-          }
-          return LAYOUT.reelY;
-        };
-
-        SlotGame.prototype.syncPortraitHUD = function() {
-          if (!this.portraitMode) return;
-          if (typeof window.syncPortraitHUD !== "function") return;
-          window.syncPortraitHUD({
-            balance: this.formatInt(this.balance),
-            bet: this.formatInt(this.bet),
-            lastWin: this.formatInt(this.lastWin),
-            jackpot: this.formatMoney(this.jackpotValue),
-            message: (this.messageText && this.messageText.text) || "",
-          });
-        };
-
-        /**
-         * 竖屏换皮 / 横屏还原。
-         * on=false 时必须完整恢复横屏原布局，不得残留竖屏坐标。
-         */
-        SlotGame.prototype.setPortraitMode = function(on) {
-          on = !!on;
-          // 已是目标状态则跳过，避免横屏被反复搅动
-          if (this.portraitMode === on && this._portraitApplied) return;
-          this.portraitMode = on;
-          this._portraitApplied = true;
-
-          if (this.cameras && this.cameras.main) {
-            this.cameras.main.setBackgroundColor(on ? "rgba(0,0,0,0)" : "#030202");
-          }
-          if (this._backdropGfx) this._backdropGfx.setVisible(!on);
-
-          const hideExtras = [];
-          if (this.focusHideGroup) hideExtras.push.apply(hideExtras, this.focusHideGroup);
-          if (this.jackpotText) hideExtras.push(this.jackpotText);
-          if (this.jackpotStars) hideExtras.push.apply(hideExtras, this.jackpotStars);
-          if (this.balanceValue) hideExtras.push(this.balanceValue);
-          if (this.lastWinValue) hideExtras.push(this.lastWinValue);
-          if (this.messageText) hideExtras.push(this.messageText);
-          if (this.leverContainer) hideExtras.push(this.leverContainer);
-          if (this.leverHit) hideExtras.push(this.leverHit);
-          if (this.leverHand) hideExtras.push(this.leverHand);
-          if (this.machineGlow) hideExtras.push(this.machineGlow);
-
-          hideExtras.forEach((obj) => {
-            if (!obj) return;
-            try {
-              if (on) {
-                if (obj._portraitPrevVis === undefined) {
-                  obj._portraitPrevVis = obj.visible !== false;
-                }
-                obj.setVisible(false);
-              } else if (obj._portraitPrevVis !== undefined) {
-                obj.setVisible(!!obj._portraitPrevVis);
-                delete obj._portraitPrevVis;
-              }
-            } catch (e) {}
-          });
-
-          if (this.machineScaleGroup && this.machineScaleGroup.list) {
-            const keep = new Set();
-            if (this.reels) {
-              this.reels.forEach((r) => {
-                if (r.container) keep.add(r.container);
-                if (r.frame) keep.add(r.frame);
-              });
-            }
-            if (this.paylineTop) keep.add(this.paylineTop);
-            if (this.paylineMiddle) keep.add(this.paylineMiddle);
-            if (this.paylineBottom) keep.add(this.paylineBottom);
-
-            this.machineScaleGroup.list.forEach((obj) => {
-              if (!obj) return;
-              if (on) {
-                if (obj._portraitPrevVis === undefined) {
-                  obj._portraitPrevVis = obj.visible !== false;
-                }
-                obj.setVisible(keep.has(obj));
-              } else if (obj._portraitPrevVis !== undefined) {
-                obj.setVisible(!!obj._portraitPrevVis);
-                delete obj._portraitPrevVis;
-              }
-            });
-          }
-
-          if (on && this.reels && this.reels.length) {
-            // 竖屏：转轮铺满透明窗
-            const n = this.reels.length;
-            const gap = 6;
-            const frameW = Math.floor((GAME_WIDTH - gap * (n - 1)) / n);
-            const frameH = Math.floor(GAME_HEIGHT * 0.92);
-            const startX = frameW / 2;
-            const cy = GAME_HEIGHT / 2;
-            this._portraitReelLayout = { frameW, frameH, cy };
-            this.reels.forEach((reel, i) => {
-              const x = startX + i * (frameW + gap);
-              if (reel.frame) {
-                reel.frame.setPosition(x, cy);
-                this.drawGradientPanel(
-                  reel.frame,
-                  frameW - 6,
-                  frameH,
-                  10,
-                  this._reelFrameTop || 0x090b0b,
-                  this._reelFrameBottom || 0x090b0b,
-                  0.25,
-                  UI.goldDim,
-                  1,
-                );
-              }
-              if (reel.container) reel.container.setPosition(x, cy);
-            });
-            if (this.paylineTop) {
-              this.paylineTop.setPosition(GAME_WIDTH / 2, cy - 64).setVisible(true);
-              this.paylineTop.width = GAME_WIDTH - 16;
-            }
-            if (this.paylineMiddle) {
-              this.paylineMiddle.setPosition(GAME_WIDTH / 2, cy).setVisible(true);
-              this.paylineMiddle.width = GAME_WIDTH - 16;
-            }
-            if (this.paylineBottom) {
-              this.paylineBottom.setPosition(GAME_WIDTH / 2, cy + 64).setVisible(true);
-              this.paylineBottom.width = GAME_WIDTH - 16;
-            }
-            if (this.machineScaleGroup) {
-              this.machineScaleGroup.setScale(1);
-              this.machineScaleGroup.setPosition(0, 0);
-            }
-            this.syncPortraitHUD();
-          } else if (!on && this.reels && this.reels.length) {
-            // 横屏还原：转轮回到 LAYOUT 原坐标
-            this._portraitReelLayout = null;
-            this.reels.forEach((reel, i) => {
-              const x = LAYOUT.reelXs[i];
-              const y = LAYOUT.reelY;
-              if (reel.frame) {
-                reel.frame.setPosition(x, y);
-                this.drawGradientPanel(
-                  reel.frame,
-                  LAYOUT.reelFrameW,
-                  LAYOUT.reelFrameH,
-                  16,
-                  this._reelFrameTop || 0x090b0b,
-                  this._reelFrameBottom || 0x090b0b,
-                  1,
-                  UI.goldDim,
-                  2,
-                );
-              }
-              if (reel.container) reel.container.setPosition(x, y);
-            });
-            const mx = LAYOUT.machineX;
-            const my = LAYOUT.machineY;
-            if (this.paylineTop) {
-              this.paylineTop.setPosition(mx, my - 64);
-              this.paylineTop.width = 448;
-            }
-            if (this.paylineMiddle) {
-              this.paylineMiddle.setPosition(mx, my);
-              this.paylineMiddle.width = 448;
-            }
-            if (this.paylineBottom) {
-              this.paylineBottom.setPosition(mx, my + 64);
-              this.paylineBottom.width = 448;
-            }
-            // 恢复「简」模式机身缩放（与 create 末尾 toggleFocusMode(true) 一致）
-            if (this.focusMode && this.machineScaleGroup && this.machineScaleAnchor) {
-              const scale = 1.15;
-              const cx = this.machineScaleAnchor.x;
-              const cy = this.machineScaleAnchor.y;
-              this.machineScaleGroup.setScale(scale, scale);
-              this.machineScaleGroup.setPosition(cx * (1 - scale), cy * (1 - scale));
-            }
           }
         };
 
