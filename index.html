@@ -13,32 +13,6 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <!-- 仅竖屏：边框 + HUD；横屏 CSS 强制隐藏，不参与布局 -->
-    <img
-      id="portrait-frame"
-      class="portrait-only"
-      src="royale_slot_portrait_transparent.webp"
-      alt=""
-      draggable="false"
-    />
-    <div id="portrait-hud" class="portrait-only" aria-hidden="true">
-      <div id="hud-jackpot">🏵️ Jackpot —</div>
-      <div id="hud-message">READY TO SPIN</div>
-      <button type="button" id="hud-lever" aria-label="拉杆"></button>
-      <div id="hud-balance">
-        <span class="hud-label">BALANCE</span>
-        <span class="hud-value" id="hud-balance-val">1000</span>
-      </div>
-      <div id="hud-bet">
-        <span class="hud-label">BET</span>
-        <span class="hud-value" id="hud-bet-val">50</span>
-      </div>
-      <div id="hud-lastwin">
-        <span class="hud-label">LAST WIN</span>
-        <span class="hud-value" id="hud-lastwin-val">0</span>
-      </div>
-    </div>
-
     <div id="game-wrapper">
       <div id="game"></div>
     </div>
