@@ -58,7 +58,6 @@ class SlotGame extends Phaser.Scene {
           this.machineScaleAnchor = { x: LAYOUT.machineX, y: LAYOUT.machineY };
           this.toggleFocusMode(true); // 默认进入「简」：藏左侧面板，机身放大 115%
           this.updateDisplay();
-          // 若当前是竖屏，立刻切入「仅转轮」外观
           if (window.__portraitMode) {
             this.setPortraitMode(true);
           }
@@ -2119,11 +2118,9 @@ class SlotGame extends Phaser.Scene {
               13,
             );
           }
-
           if (this.modalBetValue) {
             this.modalBetValue.setText(this.formatInt(this.bet));
           }
-
           if (this.lastWinValue) {
             fitTextToBox(
               this.lastWinValue,
@@ -2133,7 +2130,6 @@ class SlotGame extends Phaser.Scene {
               13,
             );
           }
-
           if (this.jackpotText) {
             fitTextToBox(
               this.jackpotText,
@@ -2143,9 +2139,7 @@ class SlotGame extends Phaser.Scene {
               16,
             );
           }
-
           if (this.portraitMode) this.syncPortraitHUD();
-
           if (!skipSave) this.saveGameState();
         };
 
@@ -2354,18 +2348,32 @@ class SlotGame extends Phaser.Scene {
           }
         };
 
-        // 竖屏换皮：隐藏原 UI，只保留转轮；数据由 HTML HUD 显示
+
+        SlotGame.prototype.getReelCenterY = function() {
+          if (this.portraitMode && this._portraitReelLayout) {
+            return this._portraitReelLayout.cy;
+          }
+          return LAYOUT.reelY;
+        };
+
+        SlotGame.prototype.syncPortraitHUD = function() {
+          if (typeof window.syncPortraitHUD !== "function") return;
+          window.syncPortraitHUD({
+            balance: this.formatInt(this.balance),
+            bet: this.formatInt(this.bet),
+            lastWin: this.formatInt(this.lastWin),
+            jackpot: this.formatMoney(this.jackpotValue),
+            message: (this.messageText && this.messageText.text) || "",
+          });
+        };
+
         SlotGame.prototype.setPortraitMode = function(on) {
           this.portraitMode = !!on;
 
           if (this.cameras && this.cameras.main) {
             this.cameras.main.setBackgroundColor(on ? "rgba(0,0,0,0)" : "#030202");
           }
-
-          // 径向背景图形
-          if (this._backdropGfx) {
-            this._backdropGfx.setVisible(!on);
-          }
+          if (this._backdropGfx) this._backdropGfx.setVisible(!on);
 
           const hideExtras = [];
           if (this.focusHideGroup) hideExtras.push.apply(hideExtras, this.focusHideGroup);
@@ -2394,7 +2402,6 @@ class SlotGame extends Phaser.Scene {
             } catch (e) {}
           });
 
-          // machineScaleGroup：竖屏只留转轮容器与细 payline
           if (this.machineScaleGroup && this.machineScaleGroup.list) {
             const keep = new Set();
             if (this.reels) {
@@ -2421,7 +2428,6 @@ class SlotGame extends Phaser.Scene {
             });
           }
 
-          // 竖屏：转轮铺满透明窗画布
           if (on && this.reels && this.reels.length) {
             const n = this.reels.length;
             const gap = 6;
@@ -2460,7 +2466,6 @@ class SlotGame extends Phaser.Scene {
               this.paylineBottom.setPosition(GAME_WIDTH / 2, cy + 64).setVisible(true);
               this.paylineBottom.width = GAME_WIDTH - 16;
             }
-            // 取消简/繁模式的机身缩放偏移
             if (this.machineScaleGroup) {
               this.machineScaleGroup.setScale(1);
               this.machineScaleGroup.setPosition(0, 0);
@@ -2468,25 +2473,6 @@ class SlotGame extends Phaser.Scene {
           }
 
           if (on) this.syncPortraitHUD();
-        };
-
-
-        SlotGame.prototype.getReelCenterY = function() {
-          if (this.portraitMode && this._portraitReelLayout) {
-            return this._portraitReelLayout.cy;
-          }
-          return LAYOUT.reelY;
-        };
-
-        SlotGame.prototype.syncPortraitHUD = function() {
-          if (typeof window.syncPortraitHUD !== "function") return;
-          window.syncPortraitHUD({
-            balance: this.formatInt(this.balance),
-            bet: this.formatInt(this.bet),
-            lastWin: this.formatInt(this.lastWin),
-            jackpot: this.formatMoney(this.jackpotValue),
-            message: (this.messageText && this.messageText.text) || "",
-          });
         };
 
         SlotGame.prototype.loadGameState = function() {

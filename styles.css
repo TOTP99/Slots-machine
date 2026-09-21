@@ -1,8 +1,4 @@
-/* 横屏：原样。竖屏：Royale 边框 + HUD 填充 */
-
-:root {
-  --gold: #ffd700;
-}
+:root { --gold: #ffd700; }
 
 * {
   -webkit-box-sizing: border-box;
@@ -10,8 +6,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html,
-body {
+html, body {
   margin: 0;
   width: 100%;
   height: 100%;
@@ -31,9 +26,7 @@ body {
   position: relative;
 }
 
-.portrait-only {
-  display: none;
-}
+.portrait-only { display: none; }
 
 #portrait-frame {
   position: fixed;
@@ -84,9 +77,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-#hud-balance,
-#hud-bet,
-#hud-lastwin {
+#hud-balance, #hud-bet, #hud-lastwin {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -138,12 +129,8 @@ body {
   object-fit: contain;
 }
 
-/* ---------- 横屏：完全原样 ---------- */
 @media (orientation: landscape) {
-  .portrait-only {
-    display: none !important;
-  }
-
+  .portrait-only { display: none !important; }
   #game-wrapper {
     position: static;
     width: 100vw;
@@ -152,7 +139,6 @@ body {
     top: auto;
     background: #030202;
   }
-
   #game {
     width: min(100vw, calc(100dvh * 16 / 9));
     height: min(100dvh, calc(100vw * 9 / 16));
@@ -160,22 +146,14 @@ body {
   }
 }
 
-/* ---------- 竖屏 ---------- */
 @media (orientation: portrait) {
-  .portrait-only {
-    display: block;
-  }
-
-  #portrait-hud {
-    display: block;
-  }
-
+  .portrait-only { display: block; }
+  #portrait-hud { display: block; }
   #game-wrapper {
     position: fixed;
     background: transparent;
     margin: 0;
   }
-
   #game {
     width: 100%;
     height: 100%;

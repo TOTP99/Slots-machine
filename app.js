@@ -1,9 +1,4 @@
-/* ============================================================
- * 应用启动 + 横竖屏适配
- * 横屏：原样 Phaser UI
- * 竖屏：Royale 边框 + 透明窗内仅转轮；Jackpot/余额/下注/上次中奖/拉杆由 HTML HUD 填充
- * ============================================================ */
-
+/* 横屏原样；竖屏 Royale 边框 + HUD */
 (function bootstrapGame() {
   const config = {
     type: Phaser.AUTO,
@@ -65,9 +60,7 @@
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) return;
     try {
-      if (typeof bgMusic !== "undefined" && bgMusic.enabled) {
-        bgMusic.tryPlay();
-      }
+      if (typeof bgMusic !== "undefined" && bgMusic.enabled) bgMusic.tryPlay();
     } catch (e) {}
   });
 
@@ -83,7 +76,6 @@
   });
 })();
 
-/** 竖屏边框坐标（1024×1536）→ 视口定位；横屏还原 */
 (function setupOrientationResize() {
   const isIOS =
     /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
@@ -94,11 +86,8 @@
 
   const FRAME_W = 1024;
   const FRAME_H = 1536;
-  // 透明转轮窗
   const REEL = { left: 0.238, top: 0.156, right: 0.757, bottom: 0.794 };
-  // Jackpot 星空带
   const JACKPOT = { left: 0.18, top: 0.03, right: 0.82, bottom: 0.12 };
-  // 底部三键
   const BTN_Y0 = 0.88;
   const BTN_Y1 = 0.96;
   const BTN = [
@@ -106,9 +95,7 @@
     { left: 0.4, right: 0.6 },
     { left: 0.6, right: 0.82 },
   ];
-  // 拉杆热区（右边）
   const LEVER = { left: 0.78, top: 0.32, right: 0.96, bottom: 0.62 };
-  // 消息条（转轮下方）
   const MSG = { left: 0.25, top: 0.8, right: 0.75, bottom: 0.86 };
 
   let debounceTimer = 0;
@@ -141,9 +128,7 @@
 
   function layoutPortraitSkin() {
     const wrap = document.getElementById("game-wrapper");
-    const hud = document.getElementById("portrait-hud");
     const portrait = isPortrait();
-
     document.body.classList.toggle("is-portrait", portrait);
     document.body.classList.toggle("is-landscape", !portrait);
 
@@ -167,7 +152,6 @@
     window.__portraitMode = true;
     const fr = frameRect();
 
-    // 画布只占透明转轮窗
     if (wrap) {
       wrap.style.position = "fixed";
       wrap.style.left = Math.round(fr.ox + REEL.left * fr.fw) + "px";
@@ -184,7 +168,6 @@
     place(document.getElementById("hud-bet"), BTN[1].left, BTN_Y0, BTN[1].right, BTN_Y1, fr);
     place(document.getElementById("hud-lastwin"), BTN[2].left, BTN_Y0, BTN[2].right, BTN_Y1, fr);
 
-    // 字号随框缩放
     const jp = document.getElementById("hud-jackpot");
     if (jp) jp.style.fontSize = Math.max(14, Math.round(fr.fh * 0.028)) + "px";
     const msg = document.getElementById("hud-message");
@@ -202,7 +185,6 @@
     } catch (e) {}
   }
 
-  // 供场景同步 HUD 数值
   window.syncPortraitHUD = function (data) {
     if (!data) return;
     const b = document.getElementById("hud-balance-val");
@@ -217,7 +199,6 @@
     if (msg && data.message != null) msg.textContent = data.message;
   };
 
-  // 拉杆点击 → 游戏 SPIN
   function bindLever() {
     const btn = document.getElementById("hud-lever");
     if (!btn || btn._bound) return;
@@ -242,14 +223,10 @@
     bindLever();
     try {
       const g = window.__slotGame;
-      if (g && g.scale && typeof g.scale.refresh === "function") {
-        g.scale.refresh();
-      }
+      if (g && g.scale && typeof g.scale.refresh === "function") g.scale.refresh();
     } catch (e) {}
     try {
-      if (typeof bgMusic !== "undefined" && bgMusic.enabled) {
-        bgMusic.tryPlay();
-      }
+      if (typeof bgMusic !== "undefined" && bgMusic.enabled) bgMusic.tryPlay();
     } catch (e) {}
   }
 
