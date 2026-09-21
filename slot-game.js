@@ -58,6 +58,10 @@ class SlotGame extends Phaser.Scene {
           this.machineScaleAnchor = { x: LAYOUT.machineX, y: LAYOUT.machineY };
           this.toggleFocusMode(true); // 默认进入「简」：藏左侧面板，机身放大 115%
           this.updateDisplay();
+          // 若当前是竖屏，立刻切入「仅转轮」外观
+          if (window.__portraitMode) {
+            this.setPortraitMode(true);
+          }
         }
 
 }
@@ -72,6 +76,7 @@ class SlotGame extends Phaser.Scene {
           const edgeColor = Phaser.Display.Color.ValueToColor(0x030202);
 
           const gfx = this.add.graphics().setDepth(-1000);
+          this._backdropGfx = gfx;
           const steps = 48;
           for (let i = steps; i >= 0; i--) {
             const t = i / steps; // 1=边缘, 0=中心
@@ -1634,7 +1639,7 @@ class SlotGame extends Phaser.Scene {
 
             reel.stopped = true;
             reel.forceStopScheduled = false;
-            reel.container.y = LAYOUT.reelY;
+            reel.container.y = this.getReelCenterY();
           });
 
           this.isSpinning = true;
@@ -1800,7 +1805,7 @@ class SlotGame extends Phaser.Scene {
 
           this.tweens.add({
             targets: reel.container,
-            y: LAYOUT.reelY + 7,
+            y: this.getReelCenterY() + 7,
             duration: 120,
             ease: "Sine.easeOut",
             yoyo: true,
@@ -2105,33 +2110,41 @@ class SlotGame extends Phaser.Scene {
         };
 
         SlotGame.prototype.updateDisplay = function(skipSave) {
-          fitTextToBox(
-            this.balanceValue,
-            this.formatInt(this.balance),
-            LAYOUT.balanceW - 35,
-            21,
-            13,
-          );
+          if (this.balanceValue) {
+            fitTextToBox(
+              this.balanceValue,
+              this.formatInt(this.balance),
+              LAYOUT.balanceW - 35,
+              21,
+              13,
+            );
+          }
 
           if (this.modalBetValue) {
             this.modalBetValue.setText(this.formatInt(this.bet));
           }
 
-          fitTextToBox(
-            this.lastWinValue,
-            this.formatInt(this.lastWin),
-            LAYOUT.lastWinW - 35,
-            21,
-            13,
-          );
+          if (this.lastWinValue) {
+            fitTextToBox(
+              this.lastWinValue,
+              this.formatInt(this.lastWin),
+              LAYOUT.lastWinW - 35,
+              21,
+              13,
+            );
+          }
 
-          fitTextToBox(
-            this.jackpotText,
-            `🏵️ Jackpot ${this.formatMoney(this.jackpotValue)}`,
-            320,
-            24,
-            16,
-          );
+          if (this.jackpotText) {
+            fitTextToBox(
+              this.jackpotText,
+              `🏵️ Jackpot ${this.formatMoney(this.jackpotValue)}`,
+              320,
+              24,
+              16,
+            );
+          }
+
+          if (this.portraitMode) this.syncPortraitHUD();
 
           if (!skipSave) this.saveGameState();
         };
@@ -2161,13 +2174,18 @@ class SlotGame extends Phaser.Scene {
         SlotGame.prototype.formatMoney = SlotGame.prototype.formatInt;
 
         SlotGame.prototype.setMessage = function(value, baseFontSize = 20) {
-          fitTextToBox(
-            this.messageText,
-            value,
-            LAYOUT.messageW - 28,
-            baseFontSize,
-            12,
-          );
+          if (this.messageText) {
+            fitTextToBox(
+              this.messageText,
+              value,
+              LAYOUT.messageW - 28,
+              baseFontSize,
+              12,
+            );
+          }
+          if (this.portraitMode && typeof window.syncPortraitHUD === "function") {
+            window.syncPortraitHUD({ message: value });
+          }
         };
 
         SlotGame.prototype.toggleAutoPlay = function() {
@@ -2334,6 +2352,141 @@ class SlotGame extends Phaser.Scene {
               ease: "Sine.easeInOut",
             });
           }
+        };
+
+        // 竖屏换皮：隐藏原 UI，只保留转轮；数据由 HTML HUD 显示
+        SlotGame.prototype.setPortraitMode = function(on) {
+          this.portraitMode = !!on;
+
+          if (this.cameras && this.cameras.main) {
+            this.cameras.main.setBackgroundColor(on ? "rgba(0,0,0,0)" : "#030202");
+          }
+
+          // 径向背景图形
+          if (this._backdropGfx) {
+            this._backdropGfx.setVisible(!on);
+          }
+
+          const hideExtras = [];
+          if (this.focusHideGroup) hideExtras.push.apply(hideExtras, this.focusHideGroup);
+          if (this.jackpotText) hideExtras.push(this.jackpotText);
+          if (this.jackpotStars) hideExtras.push.apply(hideExtras, this.jackpotStars);
+          if (this.balanceValue) hideExtras.push(this.balanceValue);
+          if (this.lastWinValue) hideExtras.push(this.lastWinValue);
+          if (this.messageText) hideExtras.push(this.messageText);
+          if (this.leverContainer) hideExtras.push(this.leverContainer);
+          if (this.leverHit) hideExtras.push(this.leverHit);
+          if (this.leverHand) hideExtras.push(this.leverHand);
+          if (this.machineGlow) hideExtras.push(this.machineGlow);
+
+          hideExtras.forEach((obj) => {
+            if (!obj) return;
+            try {
+              if (on) {
+                if (obj._portraitPrevVis === undefined) {
+                  obj._portraitPrevVis = obj.visible !== false;
+                }
+                obj.setVisible(false);
+              } else if (obj._portraitPrevVis !== undefined) {
+                obj.setVisible(!!obj._portraitPrevVis);
+                delete obj._portraitPrevVis;
+              }
+            } catch (e) {}
+          });
+
+          // machineScaleGroup：竖屏只留转轮容器与细 payline
+          if (this.machineScaleGroup && this.machineScaleGroup.list) {
+            const keep = new Set();
+            if (this.reels) {
+              this.reels.forEach((r) => {
+                if (r.container) keep.add(r.container);
+                if (r.frame) keep.add(r.frame);
+              });
+            }
+            if (this.paylineTop) keep.add(this.paylineTop);
+            if (this.paylineMiddle) keep.add(this.paylineMiddle);
+            if (this.paylineBottom) keep.add(this.paylineBottom);
+
+            this.machineScaleGroup.list.forEach((obj) => {
+              if (!obj) return;
+              if (on) {
+                if (obj._portraitPrevVis === undefined) {
+                  obj._portraitPrevVis = obj.visible !== false;
+                }
+                obj.setVisible(keep.has(obj));
+              } else if (obj._portraitPrevVis !== undefined) {
+                obj.setVisible(!!obj._portraitPrevVis);
+                delete obj._portraitPrevVis;
+              }
+            });
+          }
+
+          // 竖屏：转轮铺满透明窗画布
+          if (on && this.reels && this.reels.length) {
+            const n = this.reels.length;
+            const gap = 6;
+            const frameW = Math.floor((GAME_WIDTH - gap * (n - 1)) / n);
+            const frameH = Math.floor(GAME_HEIGHT * 0.92);
+            const startX = frameW / 2;
+            const cy = GAME_HEIGHT / 2;
+            this._portraitReelLayout = { frameW, frameH, cy };
+            this.reels.forEach((reel, i) => {
+              const x = startX + i * (frameW + gap);
+              if (reel.frame) {
+                reel.frame.setPosition(x, cy);
+                this.drawGradientPanel(
+                  reel.frame,
+                  frameW - 6,
+                  frameH,
+                  10,
+                  this._reelFrameTop || 0x090b0b,
+                  this._reelFrameBottom || 0x090b0b,
+                  0.25,
+                  UI.goldDim,
+                  1,
+                );
+              }
+              if (reel.container) reel.container.setPosition(x, cy);
+            });
+            if (this.paylineTop) {
+              this.paylineTop.setPosition(GAME_WIDTH / 2, cy - 64).setVisible(true);
+              this.paylineTop.width = GAME_WIDTH - 16;
+            }
+            if (this.paylineMiddle) {
+              this.paylineMiddle.setPosition(GAME_WIDTH / 2, cy).setVisible(true);
+              this.paylineMiddle.width = GAME_WIDTH - 16;
+            }
+            if (this.paylineBottom) {
+              this.paylineBottom.setPosition(GAME_WIDTH / 2, cy + 64).setVisible(true);
+              this.paylineBottom.width = GAME_WIDTH - 16;
+            }
+            // 取消简/繁模式的机身缩放偏移
+            if (this.machineScaleGroup) {
+              this.machineScaleGroup.setScale(1);
+              this.machineScaleGroup.setPosition(0, 0);
+            }
+          }
+
+          if (on) this.syncPortraitHUD();
+        };
+
+
+        SlotGame.prototype.getReelCenterY = function() {
+          if (this.portraitMode && this._portraitReelLayout) {
+            return this._portraitReelLayout.cy;
+          }
+          return LAYOUT.reelY;
+        };
+
+        SlotGame.prototype.syncPortraitHUD = function() {
+          if (typeof window.syncPortraitHUD !== "function") return;
+          window.syncPortraitHUD({
+            balance: this.formatInt(this.balance),
+            bet: this.formatInt(this.bet),
+            lastWin: this.formatInt(this.lastWin),
+            jackpot: this.formatMoney(this.jackpotValue),
+            message: (this.messageText && this.messageText.text) || "",
+          });
         };
 
         SlotGame.prototype.loadGameState = function() {

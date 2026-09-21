@@ -1,7 +1,7 @@
 /* ============================================================
  * 应用启动 + 横竖屏适配
- * 横竖屏都显示同一套 Phaser 老虎机（不再嵌外部留声机 iframe）。
- * 状态：localStorage（wanjin_slot_save + bgMusic*）
+ * 横屏：原样 Phaser UI
+ * 竖屏：Royale 边框 + 透明窗内仅转轮；Jackpot/余额/下注/上次中奖/拉杆由 HTML HUD 填充
  * ============================================================ */
 
 (function bootstrapGame() {
@@ -10,8 +10,6 @@
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
     parent: "game",
-    // 仅作为 create() 里 createBackdrop() 绘制完成前的极短兜底色，
-    // 与暗角边缘色 #030202 统一，避免加载瞬间出现色差闪烁。
     backgroundColor: "#030202",
     banner: false,
     scale: {
@@ -24,6 +22,7 @@
       antialias: true,
       pixelArt: false,
       roundPixels: false,
+      transparent: true,
     },
     scene: SlotGame,
   };
@@ -84,7 +83,7 @@
   });
 })();
 
-/** 横竖屏切换时只刷新缩放，不再切到外部页面 */
+/** 竖屏边框坐标（1024×1536）→ 视口定位；横屏还原 */
 (function setupOrientationResize() {
   const isIOS =
     /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
@@ -93,34 +92,35 @@
       navigator.vendor.indexOf("Apple") >= 0 &&
       "ontouchend" in document);
 
+  const FRAME_W = 1024;
+  const FRAME_H = 1536;
+  // 透明转轮窗
+  const REEL = { left: 0.238, top: 0.156, right: 0.757, bottom: 0.794 };
+  // Jackpot 星空带
+  const JACKPOT = { left: 0.18, top: 0.03, right: 0.82, bottom: 0.12 };
+  // 底部三键
+  const BTN_Y0 = 0.88;
+  const BTN_Y1 = 0.96;
+  const BTN = [
+    { left: 0.18, right: 0.4 },
+    { left: 0.4, right: 0.6 },
+    { left: 0.6, right: 0.82 },
+  ];
+  // 拉杆热区（右边）
+  const LEVER = { left: 0.78, top: 0.32, right: 0.96, bottom: 0.62 };
+  // 消息条（转轮下方）
+  const MSG = { left: 0.25, top: 0.8, right: 0.75, bottom: 0.86 };
+
   let debounceTimer = 0;
   let stabilizeTimer = 0;
 
-  // 竖屏：把 #game-wrapper 嵌进 Royale 边框透明转轮窗；横屏还原全屏
-  // 边框图 1024×1536，透明区约 x 23.8%~75.7%、y 15.6%~79.4%
-  const FRAME_W = 1024;
-  const FRAME_H = 1536;
-  const SLOT = { left: 0.238, top: 0.156, right: 0.757, bottom: 0.794 };
-
-  function layoutPortraitFrame() {
-    const wrap = document.getElementById("game-wrapper");
-    const frame = document.getElementById("portrait-frame");
-    if (!wrap) return;
-
-    const isPortrait = window.matchMedia
+  function isPortrait() {
+    return window.matchMedia
       ? window.matchMedia("(orientation: portrait)").matches
       : window.innerHeight >= window.innerWidth;
+  }
 
-    if (!isPortrait) {
-      wrap.style.left = "";
-      wrap.style.top = "";
-      wrap.style.width = "";
-      wrap.style.height = "";
-      wrap.style.position = "";
-      wrap.style.background = "";
-      return;
-    }
-
+  function frameRect() {
     const vw = window.innerWidth || document.documentElement.clientWidth;
     const vh = window.innerHeight || document.documentElement.clientHeight;
     const scale = Math.min(vw / FRAME_W, vh / FRAME_H);
@@ -128,26 +128,118 @@
     const fh = FRAME_H * scale;
     const ox = (vw - fw) / 2;
     const oy = (vh - fh) / 2;
+    return { ox, oy, fw, fh, scale, vw, vh };
+  }
 
-    const left = ox + SLOT.left * fw;
-    const top = oy + SLOT.top * fh;
-    const width = (SLOT.right - SLOT.left) * fw;
-    const height = (SLOT.bottom - SLOT.top) * fh;
+  function place(el, left, top, right, bottom, fr) {
+    if (!el) return;
+    el.style.left = Math.round(fr.ox + left * fr.fw) + "px";
+    el.style.top = Math.round(fr.oy + top * fr.fh) + "px";
+    el.style.width = Math.round((right - left) * fr.fw) + "px";
+    el.style.height = Math.round((bottom - top) * fr.fh) + "px";
+  }
 
-    wrap.style.position = "fixed";
-    wrap.style.left = Math.round(left) + "px";
-    wrap.style.top = Math.round(top) + "px";
-    wrap.style.width = Math.round(width) + "px";
-    wrap.style.height = Math.round(height) + "px";
-    wrap.style.background = "transparent";
+  function layoutPortraitSkin() {
+    const wrap = document.getElementById("game-wrapper");
+    const hud = document.getElementById("portrait-hud");
+    const portrait = isPortrait();
 
-    if (frame) {
-      frame.style.display = "block";
+    document.body.classList.toggle("is-portrait", portrait);
+    document.body.classList.toggle("is-landscape", !portrait);
+
+    if (!portrait) {
+      if (wrap) {
+        wrap.style.left = "";
+        wrap.style.top = "";
+        wrap.style.width = "";
+        wrap.style.height = "";
+        wrap.style.position = "";
+        wrap.style.background = "";
+      }
+      window.__portraitMode = false;
+      try {
+        const sc = window.__slotGameScene;
+        if (sc && typeof sc.setPortraitMode === "function") sc.setPortraitMode(false);
+      } catch (e) {}
+      return;
     }
+
+    window.__portraitMode = true;
+    const fr = frameRect();
+
+    // 画布只占透明转轮窗
+    if (wrap) {
+      wrap.style.position = "fixed";
+      wrap.style.left = Math.round(fr.ox + REEL.left * fr.fw) + "px";
+      wrap.style.top = Math.round(fr.oy + REEL.top * fr.fh) + "px";
+      wrap.style.width = Math.round((REEL.right - REEL.left) * fr.fw) + "px";
+      wrap.style.height = Math.round((REEL.bottom - REEL.top) * fr.fh) + "px";
+      wrap.style.background = "transparent";
+    }
+
+    place(document.getElementById("hud-jackpot"), JACKPOT.left, JACKPOT.top, JACKPOT.right, JACKPOT.bottom, fr);
+    place(document.getElementById("hud-message"), MSG.left, MSG.top, MSG.right, MSG.bottom, fr);
+    place(document.getElementById("hud-lever"), LEVER.left, LEVER.top, LEVER.right, LEVER.bottom, fr);
+    place(document.getElementById("hud-balance"), BTN[0].left, BTN_Y0, BTN[0].right, BTN_Y1, fr);
+    place(document.getElementById("hud-bet"), BTN[1].left, BTN_Y0, BTN[1].right, BTN_Y1, fr);
+    place(document.getElementById("hud-lastwin"), BTN[2].left, BTN_Y0, BTN[2].right, BTN_Y1, fr);
+
+    // 字号随框缩放
+    const jp = document.getElementById("hud-jackpot");
+    if (jp) jp.style.fontSize = Math.max(14, Math.round(fr.fh * 0.028)) + "px";
+    const msg = document.getElementById("hud-message");
+    if (msg) msg.style.fontSize = Math.max(11, Math.round(fr.fh * 0.018)) + "px";
+    document.querySelectorAll(".hud-value").forEach(function (el) {
+      el.style.fontSize = Math.max(13, Math.round(fr.fh * 0.022)) + "px";
+    });
+    document.querySelectorAll(".hud-label").forEach(function (el) {
+      el.style.fontSize = Math.max(8, Math.round(fr.fh * 0.012)) + "px";
+    });
+
+    try {
+      const sc = window.__slotGameScene;
+      if (sc && typeof sc.setPortraitMode === "function") sc.setPortraitMode(true);
+    } catch (e) {}
+  }
+
+  // 供场景同步 HUD 数值
+  window.syncPortraitHUD = function (data) {
+    if (!data) return;
+    const b = document.getElementById("hud-balance-val");
+    const bet = document.getElementById("hud-bet-val");
+    const lw = document.getElementById("hud-lastwin-val");
+    const jp = document.getElementById("hud-jackpot");
+    const msg = document.getElementById("hud-message");
+    if (b && data.balance != null) b.textContent = String(data.balance);
+    if (bet && data.bet != null) bet.textContent = String(data.bet);
+    if (lw && data.lastWin != null) lw.textContent = String(data.lastWin);
+    if (jp && data.jackpot != null) jp.textContent = "🏵️ Jackpot " + data.jackpot;
+    if (msg && data.message != null) msg.textContent = data.message;
+  };
+
+  // 拉杆点击 → 游戏 SPIN
+  function bindLever() {
+    const btn = document.getElementById("hud-lever");
+    if (!btn || btn._bound) return;
+    btn._bound = true;
+    btn.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      try {
+        const sc = window.__slotGameScene;
+        if (sc) {
+          if (sc.sfx) {
+            sc.sfx.init();
+            sc.sfx.warmup();
+          }
+          if (typeof sc.handleSpinInput === "function") sc.handleSpinInput();
+        }
+      } catch (err) {}
+    });
   }
 
   function refreshScale() {
-    layoutPortraitFrame();
+    layoutPortraitSkin();
+    bindLever();
     try {
       const g = window.__slotGame;
       if (g && g.scale && typeof g.scale.refresh === "function") {
@@ -160,13 +252,6 @@
       }
     } catch (e) {}
   }
-
-  // 首屏立即布局一次（等图片/字体无关）
-  layoutPortraitFrame();
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", layoutPortraitFrame);
-  }
-  window.addEventListener("load", layoutPortraitFrame);
 
   function scheduleRefresh() {
     if (debounceTimer) clearTimeout(debounceTimer);
@@ -197,4 +282,17 @@
       else if (mql.addListener) mql.addListener(scheduleRefresh);
     }
   } catch (e) {}
+
+  layoutPortraitSkin();
+  bindLever();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      layoutPortraitSkin();
+      bindLever();
+    });
+  }
+  window.addEventListener("load", function () {
+    layoutPortraitSkin();
+    bindLever();
+  });
 })();
