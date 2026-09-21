@@ -1,3 +1,5 @@
+/* 横屏 = 原样；竖屏 = Royale 边框。横屏规则全部 !important 隔离竖屏样式 */
+
 :root { --gold: #ffd700; }
 
 * {
@@ -26,7 +28,8 @@ body {
   position: relative;
 }
 
-.portrait-only { display: none; }
+/* 默认隐藏，避免横屏首帧闪一下 */
+.portrait-only { display: none !important; }
 
 #portrait-frame {
   position: fixed;
@@ -46,7 +49,6 @@ body {
   z-index: 4;
   pointer-events: none;
 }
-
 #portrait-hud > * {
   position: absolute;
   pointer-events: none;
@@ -59,24 +61,19 @@ body {
   text-shadow: 0 0 8px rgba(255, 200, 80, 0.7), 0 1px 2px #000;
   white-space: nowrap;
 }
-
 #hud-message {
   color: #e0f0ff;
   font-weight: bold;
   text-align: center;
   text-shadow: 0 1px 3px #000;
-  font-size: 13px;
 }
-
 #hud-lever {
   pointer-events: auto !important;
   background: transparent;
   border: none;
   padding: 0;
   cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
 }
-
 #hud-balance, #hud-bet, #hud-lastwin {
   display: flex;
   flex-direction: column;
@@ -85,19 +82,8 @@ body {
   color: #b3e5fc;
   text-shadow: 0 1px 2px #000;
 }
-
-.hud-label {
-  font-size: 9px;
-  letter-spacing: 1px;
-  opacity: 0.85;
-  color: #e0f0ff;
-}
-
-.hud-value {
-  font-size: 15px;
-  font-weight: bold;
-  color: #81d4fa;
-}
+.hud-label { font-size: 9px; letter-spacing: 1px; opacity: 0.85; color: #e0f0ff; }
+.hud-value { font-size: 15px; font-weight: bold; color: #81d4fa; }
 
 #game-wrapper {
   width: 100vw;
@@ -129,26 +115,41 @@ body {
   object-fit: contain;
 }
 
+/* ========== 横屏：强制原样，清掉竖屏内联定位 ========== */
 @media (orientation: landscape) {
-  .portrait-only { display: none !important; }
-  #game-wrapper {
-    position: static;
-    width: 100vw;
-    height: 100dvh;
-    left: auto;
-    top: auto;
-    background: #030202;
+  .portrait-only {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
   }
+  #portrait-hud { display: none !important; }
+  #portrait-frame { display: none !important; }
+
+  #game-wrapper {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    background: #030202 !important;
+    margin: 0 !important;
+  }
+
   #game {
-    width: min(100vw, calc(100dvh * 16 / 9));
-    height: min(100dvh, calc(100vw * 9 / 16));
+    width: min(100vw, calc(100dvh * 16 / 9)) !important;
+    height: min(100dvh, calc(100vw * 9 / 16)) !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
     aspect-ratio: 16 / 9;
   }
 }
 
+/* ========== 竖屏：边框 + HUD ========== */
 @media (orientation: portrait) {
-  .portrait-only { display: block; }
-  #portrait-hud { display: block; }
+  .portrait-only { display: block !important; }
+  #portrait-hud { display: block !important; }
+
   #game-wrapper {
     position: fixed;
     background: transparent;

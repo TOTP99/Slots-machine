@@ -1,4 +1,8 @@
-/* 横屏原样；竖屏 Royale 边框 + HUD */
+/* ============================================================
+ * 横屏：完全原样（不读竖屏布局、不改 Phaser 外观）
+ * 竖屏：Royale 边框 + HUD 填充数据
+ * ============================================================ */
+
 (function bootstrapGame() {
   const config = {
     type: Phaser.AUTO,
@@ -17,12 +21,12 @@
       antialias: true,
       pixelArt: false,
       roundPixels: false,
-      transparent: true,
     },
     scene: SlotGame,
   };
 
   window.__slotGame = new Phaser.Game(config);
+  window.__portraitMode = false;
 
   function unlockAudioOnce() {
     try {
@@ -100,6 +104,7 @@
 
   let debounceTimer = 0;
   let stabilizeTimer = 0;
+  let lastPortrait = null;
 
   function isPortrait() {
     return window.matchMedia
@@ -113,9 +118,12 @@
     const scale = Math.min(vw / FRAME_W, vh / FRAME_H);
     const fw = FRAME_W * scale;
     const fh = FRAME_H * scale;
-    const ox = (vw - fw) / 2;
-    const oy = (vh - fh) / 2;
-    return { ox, oy, fw, fh, scale, vw, vh };
+    return {
+      ox: (vw - fw) / 2,
+      oy: (vh - fh) / 2,
+      fw,
+      fh,
+    };
   }
 
   function place(el, left, top, right, bottom, fr) {
@@ -126,30 +134,60 @@
     el.style.height = Math.round((bottom - top) * fr.fh) + "px";
   }
 
-  function layoutPortraitSkin() {
+  /** 横屏：清掉所有竖屏内联样式，恢复原生布局 */
+  function clearPortraitInlineStyles() {
     const wrap = document.getElementById("game-wrapper");
-    const portrait = isPortrait();
-    document.body.classList.toggle("is-portrait", portrait);
-    document.body.classList.toggle("is-landscape", !portrait);
-
-    if (!portrait) {
-      if (wrap) {
-        wrap.style.left = "";
-        wrap.style.top = "";
-        wrap.style.width = "";
-        wrap.style.height = "";
-        wrap.style.position = "";
-        wrap.style.background = "";
+    if (wrap) {
+      wrap.style.cssText = "";
+    }
+    [
+      "hud-jackpot",
+      "hud-message",
+      "hud-lever",
+      "hud-balance",
+      "hud-bet",
+      "hud-lastwin",
+    ].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.style.left = "";
+        el.style.top = "";
+        el.style.width = "";
+        el.style.height = "";
+        el.style.fontSize = "";
       }
+    });
+  }
+
+  function layoutPortraitSkin() {
+    const portrait = isPortrait();
+    const wrap = document.getElementById("game-wrapper");
+    const hud = document.getElementById("portrait-hud");
+
+    // ---------- 横屏：保护原样 ----------
+    if (!portrait) {
       window.__portraitMode = false;
-      try {
-        const sc = window.__slotGameScene;
-        if (sc && typeof sc.setPortraitMode === "function") sc.setPortraitMode(false);
-      } catch (e) {}
+      clearPortraitInlineStyles();
+      if (hud) hud.setAttribute("aria-hidden", "true");
+
+      // 仅在从竖屏切回横屏时通知场景还原（避免重复扰动）
+      if (lastPortrait === true || lastPortrait === null) {
+        try {
+          const sc = window.__slotGameScene;
+          if (sc && typeof sc.setPortraitMode === "function") {
+            sc.setPortraitMode(false);
+          }
+        } catch (e) {}
+      }
+      lastPortrait = false;
       return;
     }
 
+    // ---------- 竖屏 ----------
     window.__portraitMode = true;
+    lastPortrait = true;
+    if (hud) hud.setAttribute("aria-hidden", "false");
+
     const fr = frameRect();
 
     if (wrap) {
@@ -159,6 +197,7 @@
       wrap.style.width = Math.round((REEL.right - REEL.left) * fr.fw) + "px";
       wrap.style.height = Math.round((REEL.bottom - REEL.top) * fr.fh) + "px";
       wrap.style.background = "transparent";
+      wrap.style.margin = "0";
     }
 
     place(document.getElementById("hud-jackpot"), JACKPOT.left, JACKPOT.top, JACKPOT.right, JACKPOT.bottom, fr);
@@ -186,7 +225,8 @@
   }
 
   window.syncPortraitHUD = function (data) {
-    if (!data) return;
+    // 横屏不写 HUD，避免无意义 DOM 操作
+    if (!window.__portraitMode || !data) return;
     const b = document.getElementById("hud-balance-val");
     const bet = document.getElementById("hud-bet-val");
     const lw = document.getElementById("hud-lastwin-val");
@@ -204,6 +244,8 @@
     if (!btn || btn._bound) return;
     btn._bound = true;
     btn.addEventListener("pointerdown", function (e) {
+      // 横屏时按钮被 CSS 隐藏且 pointer-events:none，这里再挡一层
+      if (!window.__portraitMode) return;
       e.preventDefault();
       try {
         const sc = window.__slotGameScene;
@@ -260,6 +302,7 @@
     }
   } catch (e) {}
 
+  // 首屏：若已是横屏，只清样式、不碰场景外观
   layoutPortraitSkin();
   bindLever();
   if (document.readyState === "loading") {

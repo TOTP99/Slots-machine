@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- 仅竖屏：边框 + HUD；横屏 CSS 强制隐藏，不参与布局 -->
     <img
       id="portrait-frame"
       class="portrait-only"
@@ -20,8 +21,7 @@
       alt=""
       draggable="false"
     />
-
-    <div id="portrait-hud" class="portrait-only">
+    <div id="portrait-hud" class="portrait-only" aria-hidden="true">
       <div id="hud-jackpot">🏵️ Jackpot —</div>
       <div id="hud-message">READY TO SPIN</div>
       <button type="button" id="hud-lever" aria-label="拉杆"></button>

@@ -58,7 +58,8 @@ class SlotGame extends Phaser.Scene {
           this.machineScaleAnchor = { x: LAYOUT.machineX, y: LAYOUT.machineY };
           this.toggleFocusMode(true); // 默认进入「简」：藏左侧面板，机身放大 115%
           this.updateDisplay();
-          if (window.__portraitMode) {
+          // 仅竖屏切入换皮；横屏保持 create 出来的原样
+          if (window.__portraitMode === true) {
             this.setPortraitMode(true);
           }
         }
@@ -2139,6 +2140,7 @@ class SlotGame extends Phaser.Scene {
               16,
             );
           }
+          // 仅竖屏同步 HTML HUD；横屏不碰
           if (this.portraitMode) this.syncPortraitHUD();
           if (!skipSave) this.saveGameState();
         };
@@ -2357,6 +2359,7 @@ class SlotGame extends Phaser.Scene {
         };
 
         SlotGame.prototype.syncPortraitHUD = function() {
+          if (!this.portraitMode) return;
           if (typeof window.syncPortraitHUD !== "function") return;
           window.syncPortraitHUD({
             balance: this.formatInt(this.balance),
@@ -2367,8 +2370,16 @@ class SlotGame extends Phaser.Scene {
           });
         };
 
+        /**
+         * 竖屏换皮 / 横屏还原。
+         * on=false 时必须完整恢复横屏原布局，不得残留竖屏坐标。
+         */
         SlotGame.prototype.setPortraitMode = function(on) {
-          this.portraitMode = !!on;
+          on = !!on;
+          // 已是目标状态则跳过，避免横屏被反复搅动
+          if (this.portraitMode === on && this._portraitApplied) return;
+          this.portraitMode = on;
+          this._portraitApplied = true;
 
           if (this.cameras && this.cameras.main) {
             this.cameras.main.setBackgroundColor(on ? "rgba(0,0,0,0)" : "#030202");
@@ -2429,6 +2440,7 @@ class SlotGame extends Phaser.Scene {
           }
 
           if (on && this.reels && this.reels.length) {
+            // 竖屏：转轮铺满透明窗
             const n = this.reels.length;
             const gap = 6;
             const frameW = Math.floor((GAME_WIDTH - gap * (n - 1)) / n);
@@ -2470,9 +2482,52 @@ class SlotGame extends Phaser.Scene {
               this.machineScaleGroup.setScale(1);
               this.machineScaleGroup.setPosition(0, 0);
             }
+            this.syncPortraitHUD();
+          } else if (!on && this.reels && this.reels.length) {
+            // 横屏还原：转轮回到 LAYOUT 原坐标
+            this._portraitReelLayout = null;
+            this.reels.forEach((reel, i) => {
+              const x = LAYOUT.reelXs[i];
+              const y = LAYOUT.reelY;
+              if (reel.frame) {
+                reel.frame.setPosition(x, y);
+                this.drawGradientPanel(
+                  reel.frame,
+                  LAYOUT.reelFrameW,
+                  LAYOUT.reelFrameH,
+                  16,
+                  this._reelFrameTop || 0x090b0b,
+                  this._reelFrameBottom || 0x090b0b,
+                  1,
+                  UI.goldDim,
+                  2,
+                );
+              }
+              if (reel.container) reel.container.setPosition(x, y);
+            });
+            const mx = LAYOUT.machineX;
+            const my = LAYOUT.machineY;
+            if (this.paylineTop) {
+              this.paylineTop.setPosition(mx, my - 64);
+              this.paylineTop.width = 448;
+            }
+            if (this.paylineMiddle) {
+              this.paylineMiddle.setPosition(mx, my);
+              this.paylineMiddle.width = 448;
+            }
+            if (this.paylineBottom) {
+              this.paylineBottom.setPosition(mx, my + 64);
+              this.paylineBottom.width = 448;
+            }
+            // 恢复「简」模式机身缩放（与 create 末尾 toggleFocusMode(true) 一致）
+            if (this.focusMode && this.machineScaleGroup && this.machineScaleAnchor) {
+              const scale = 1.15;
+              const cx = this.machineScaleAnchor.x;
+              const cy = this.machineScaleAnchor.y;
+              this.machineScaleGroup.setScale(scale, scale);
+              this.machineScaleGroup.setPosition(cx * (1 - scale), cy * (1 - scale));
+            }
           }
-
-          if (on) this.syncPortraitHUD();
         };
 
         SlotGame.prototype.loadGameState = function() {
