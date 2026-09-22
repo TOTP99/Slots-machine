@@ -682,27 +682,12 @@ class SlotGame extends Phaser.Scene {
 
         // 右下角"硬币"菜单入口：盖住底图原来的皇冠+R+ROYALE，
         // 重画一枚金币（皇冠 + 中央音符 + 底部弧形 "SET-UP"），
-        // 常驻显示、常驻呼吸光晕，点击后触发原时钟键的下一级菜单（藏/显侧边栏）。
+        // 常驻显示，点击后触发原时钟键的下一级菜单（藏/显侧边栏）。
         SlotGame.prototype.createCoinMenuButton = function() {
           const cb = LAYOUT.coinButton;
           if (!cb) return;
           const { x, y, r } = cb;
           this._coinR = r;
-
-          this.coinGlow = this.add
-            .circle(x, y, r * 1.22, 0xffd700, 1)
-            .setBlendMode(Phaser.BlendModes.ADD)
-            .setAlpha(0.28)
-            .setDepth(11.5);
-          this.tweens.add({
-            targets: this.coinGlow,
-            alpha: { from: 0.18, to: 0.5 },
-            scale: { from: 0.94, to: 1.08 },
-            duration: 1400,
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.easeInOut",
-          });
 
           this.coinFace = this.add.graphics().setPosition(x, y).setDepth(12);
           this._drawCoinFace(false);

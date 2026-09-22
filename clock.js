@@ -41,7 +41,7 @@ class DigitalClock {
     this.timer = setInterval(() => this._tick(), 1000);
   }
 
-  // 自动算出能塞进招牌原 "ROYALE" 位置的最大字号
+  // 自动算出能塞进招牌原 "ROYALE" 位置的最大字号，再整体缩小 33%（更精致，不占满整块招牌）
   _fitFont(maxW, maxH) {
     if (!this.text) return;
     let size = Math.floor(maxH);
@@ -50,6 +50,8 @@ class DigitalClock {
       size -= 1;
       this.text.setFontSize(size);
     }
+    size = Math.max(8, Math.round(size * 0.67));
+    this.text.setFontSize(size);
   }
 
   _tick() {

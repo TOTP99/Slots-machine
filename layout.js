@@ -99,7 +99,8 @@ const LAYOUT_PRESETS = {
     // 招牌上原 "ROYALE" 文字的位置：换成 HH:MM:SS 数字时钟
     clockSign: { x: 885, y: 279, w: 240, h: 66 },
     // 右下角硬币（原皇冠+R+ROYALE）：换成设置入口按钮
-    coinButton: { x: 875, y: 1275, r: 115 },
+    // 半径较原来（115）缩小 33%
+    coinButton: { x: 875, y: 1275, r: 77 },
     modalScale: 1.55,
 
     lever: {
