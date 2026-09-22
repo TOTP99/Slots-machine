@@ -460,7 +460,7 @@ class SlotGame extends Phaser.Scene {
           const ctrlGap = Math.min(50, w * 0.27);
 
           const prevBtn = this.add
-            .text(x - ctrlGap, tY, "⏮️", { fontSize: "30px" })
+            .text(x - ctrlGap, tY, "◀◀", { fontSize: "22px", fontStyle: "bold", color: "#ffd700" })
             .setOrigin(0.5)
             .setInteractive({ useHandCursor: true });
           prevBtn.on("pointerdown", () => {
@@ -473,7 +473,7 @@ class SlotGame extends Phaser.Scene {
           this.focusHideGroup.push(prevBtn);
 
           this.sidePlayPauseBtn = this.add
-            .text(x, tY, bgMusic.isPlaying() ? "⏸️" : "▶️", { fontSize: "30px" })
+            .text(x, tY, bgMusic.isPlaying() ? "❚❚" : "▶", { fontSize: "22px", fontStyle: "bold", color: "#ffd700" })
             .setOrigin(0.5)
             .setInteractive({ useHandCursor: true });
           this.sidePlayPauseBtn.on("pointerdown", () => {
@@ -495,7 +495,7 @@ class SlotGame extends Phaser.Scene {
           this.focusHideGroup.push(this.sidePlayPauseBtn);
 
           const nextBtn = this.add
-            .text(x + ctrlGap, tY, "⏭️", { fontSize: "30px" })
+            .text(x + ctrlGap, tY, "▶▶", { fontSize: "22px", fontStyle: "bold", color: "#ffd700" })
             .setOrigin(0.5)
             .setInteractive({ useHandCursor: true });
           nextBtn.on("pointerdown", () => {
@@ -605,7 +605,7 @@ class SlotGame extends Phaser.Scene {
 
         SlotGame.prototype.refreshPlayPauseIcon = function() {
           if (!this.sidePlayPauseBtn) return;
-          this.sidePlayPauseBtn.setText(bgMusic.isPlaying() ? "⏸️" : "▶️");
+          this.sidePlayPauseBtn.setText(bgMusic.isPlaying() ? "❚❚" : "▶");
         };
 
         SlotGame.prototype.createRightControls = function() {
