@@ -34,13 +34,6 @@ class SoundFX {
     } catch (e) {}
   }
 
-  quarterBell() {
-    if (!this.enabled) return;
-    this.init();
-    this.beep(1046, 0.16, "sine", 0.075);
-    setTimeout(() => this.beep(1318, 0.22, "sine", 0.07), 150);
-  }
-
   beep(freq = 440, duration = 0.1, type = "sine", volume = 0.05) {
     if (!this.enabled) return;
     this.init();

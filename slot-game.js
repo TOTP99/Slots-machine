@@ -38,12 +38,7 @@ class SlotGame extends Phaser.Scene {
           };
         }
 
-        // 场景重启时重置运行期状态
         init() {
-          if (this.clock) {
-            this.clock.destroy();
-            this.clock = null;
-          }
           this.reels = [];
           this.focusHideGroup = [];
           this.focusMode = false;
@@ -80,9 +75,7 @@ class SlotGame extends Phaser.Scene {
           this.createSettingsModal();
           this.createKeyboardControls();
           this.createAmbientAnimations();
-          // 时分秒显示已去掉（不再创建 DigitalClock）
-          this.clock = null;
-          this.toggleFocusMode(true); // 默认「藏」
+          this.toggleFocusMode(true);
           this.updateDisplay();
         }
 
@@ -673,17 +666,6 @@ class SlotGame extends Phaser.Scene {
           }
         };
 
-        SlotGame.prototype.drawRoundedPanel = function(gfx, w, h, radius, strokeColor, strokeWidth, fillColor, fillAlpha = 1) {
-          gfx.clear();
-          gfx.fillStyle(fillColor, fillAlpha);
-          gfx.fillRoundedRect(-w / 2, -h / 2, w, h, radius);
-          gfx.lineStyle(strokeWidth, strokeColor, 1);
-          gfx.strokeRoundedRect(-w / 2, -h / 2, w, h, radius);
-        };
-
-        // 右下角"硬币"菜单入口：盖住底图原来的皇冠+R+ROYALE，
-        // 重画一枚金币（皇冠 + 中央音符 + 底部弧形 "SET-UP"），
-        // 常驻显示，点击后触发原时钟键的下一级菜单（藏/显侧边栏）。
         SlotGame.prototype.createCoinMenuButton = function() {
           const cb = LAYOUT.coinButton;
           if (!cb) return;
@@ -693,34 +675,35 @@ class SlotGame extends Phaser.Scene {
           this.coinFace = this.add.graphics().setPosition(x, y).setDepth(12);
           this._drawCoinFace(false);
 
+          // 高光：筹码斜向光泽
           this.coinHighlight = this.add
-            .ellipse(x - r * 0.28, y - r * 0.32, r * 0.9, r * 0.5, 0xffffff, 0.16)
-            .setAngle(-25)
+            .ellipse(x - r * 0.22, y - r * 0.28, r * 0.72, r * 0.38, 0xffffff, 0.12)
+            .setAngle(-28)
             .setDepth(12.6);
 
           this.coinCrown = this.add
-            .text(x, y - r * 0.52, "👑", { fontSize: Math.round(r * 0.5) + "px" })
+            .text(x, y - r * 0.48, "👑", { fontSize: Math.round(r * 0.42) + "px" })
             .setOrigin(0.5)
             .setDepth(13);
 
           this.coinNote = this.add
-            .text(x, y, "♪", {
+            .text(x, y + r * 0.02, "♪", {
               fontFamily: "Arial, sans-serif",
               fontStyle: "bold",
-              fontSize: Math.round(r * 0.62) + "px",
-              color: "#3a2408",
+              fontSize: Math.round(r * 0.52) + "px",
+              color: "#1a0a00",
             })
             .setOrigin(0.5)
             .setDepth(13);
 
           this.coinArcText = this.drawArcText(
             "SET-UP",
-            x, y, r * 0.72, 90, 100,
+            x, y, r * 0.68, 90, 96,
             {
               fontFamily: "Arial, sans-serif",
               fontStyle: "bold",
-              fontSize: Math.round(r * 0.2) + "px",
-              color: "#3a2408",
+              fontSize: Math.round(r * 0.18) + "px",
+              color: "#fff8e0",
             },
             13,
           );
@@ -755,19 +738,56 @@ class SlotGame extends Phaser.Scene {
           });
         };
 
+        // 赌场筹码外观：外圈色段 + 内环 + 中心圆盘（位置/半径不变）
         SlotGame.prototype._drawCoinFace = function(hover) {
           const g = this.coinFace;
           if (!g) return;
           const r = this._coinR || 85;
           g.clear();
-          const top = hover ? 0xffe27a : 0xffd700;
-          const bottom = hover ? 0xb8860b : 0x9a6a12;
-          g.fillGradientStyle(top, top, bottom, bottom, 1);
-          g.fillCircle(0, 0, r);
-          g.lineStyle(hover ? 4 : 3, 0x3a2408, 0.9);
+
+          const rimDark = hover ? 0x8b0000 : 0x6b0000;
+          const rimLite = hover ? 0xffe27a : 0xffd700;
+          const face = hover ? 0xc41e3a : 0xa01830;
+          const faceInner = hover ? 0xe8c060 : 0xd4a84b;
+          const center = hover ? 0xfff0b0 : 0xf0d070;
+          const ink = 0x1a0800;
+          const innerRim = r * 0.78;
+
+          // 外圈交替色段（扇形铺满再盖中心，留出筹码边）
+          const segs = 16;
+          for (let i = 0; i < segs; i++) {
+            const a0 = (Math.PI * 2 * i) / segs - Math.PI / 2;
+            const a1 = (Math.PI * 2 * (i + 1)) / segs - Math.PI / 2;
+            g.fillStyle(i % 2 === 0 ? rimLite : rimDark, 1);
+            g.slice(0, 0, r, a0, a1, false);
+            g.fillPath();
+          }
+
+          // 主盘面（酒红）
+          g.fillStyle(face, 1);
+          g.fillCircle(0, 0, innerRim);
+
+          // 金色内环
+          g.lineStyle(Math.max(2, r * 0.045), faceInner, 1);
+          g.strokeCircle(0, 0, r * 0.62);
+          g.lineStyle(Math.max(1.2, r * 0.02), ink, 0.55);
+          g.strokeCircle(0, 0, r * 0.62);
+
+          // 中心圆盘
+          g.fillStyle(center, 1);
+          g.fillCircle(0, 0, r * 0.36);
+          g.lineStyle(Math.max(1.5, r * 0.025), ink, 0.85);
+          g.strokeCircle(0, 0, r * 0.36);
+
+          // 环上小点
+          for (let i = 0; i < 8; i++) {
+            const a = (Math.PI * 2 * i) / 8 - Math.PI / 2;
+            g.fillStyle(rimLite, hover ? 0.95 : 0.8);
+            g.fillCircle(Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62, Math.max(1.5, r * 0.035));
+          }
+
+          g.lineStyle(hover ? 3 : 2.2, ink, 0.95);
           g.strokeCircle(0, 0, r);
-          g.lineStyle(1.4, 0xfff3c4, hover ? 0.9 : 0.7);
-          g.strokeCircle(0, 0, r * 0.86);
         };
 
         // 通用贴圆弧文字：逐字符旋转摆放，centerAngleDeg=90 是圆心正下方

@@ -1,9 +1,9 @@
-/* 启动 Phaser + 横竖屏切换 + 音频解锁 */
+/* 启动 Phaser + 横竖屏卷帘切换 + 音频解锁 */
 
 (function bootstrapGame() {
   applyLayout(detectOrientationKey());
 
-  const config = {
+  window.__slotGame = new Phaser.Game({
     type: Phaser.AUTO,
     width: LAYOUT.width,
     height: LAYOUT.height,
@@ -17,15 +17,9 @@
       width: LAYOUT.width,
       height: LAYOUT.height,
     },
-    render: {
-      antialias: true,
-      pixelArt: false,
-      roundPixels: false,
-    },
+    render: { antialias: true, pixelArt: false, roundPixels: false },
     scene: SlotGame,
-  };
-
-  window.__slotGame = new Phaser.Game(config);
+  });
 
   function unlockAudioOnce() {
     try {
@@ -74,10 +68,6 @@
   function persistAll() {
     try {
       const sc = window.__slotGameScene;
-      if (sc && sc.clock && typeof sc.clock.destroy === "function") {
-        sc.clock.destroy();
-        sc.clock = null;
-      }
       if (sc && typeof sc.saveGameState === "function") sc.saveGameState(true);
       if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {
         bgMusic.persistProgress();
@@ -100,6 +90,35 @@
   let stabilizeTimer = 0;
   let currentKey = LAYOUT.key;
   let switching = false;
+
+  const CURTAIN_MS = 400;
+
+  function ensureCurtain() {
+    let el = document.getElementById("orient-curtain");
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = "orient-curtain";
+    el.innerHTML =
+      '<div class="curtain-half curtain-top"></div><div class="curtain-half curtain-bot"></div>';
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function curtainClose(done) {
+    const el = ensureCurtain();
+    el.classList.remove("active");
+    void el.offsetWidth;
+    el.classList.add("active");
+    setTimeout(done, CURTAIN_MS);
+  }
+
+  function curtainOpen(done) {
+    const el = ensureCurtain();
+    el.classList.remove("active");
+    setTimeout(function () {
+      if (typeof done === "function") done();
+    }, CURTAIN_MS);
+  }
 
   function forceViewportCenter() {
     try {
@@ -174,7 +193,7 @@
     switching = true;
     currentKey = key;
 
-    const doSwitch = function () {
+    curtainClose(function () {
       applyLayout(key);
       try {
         if (typeof sc.saveGameState === "function") sc.saveGameState(true);
@@ -191,24 +210,11 @@
 
       setTimeout(function () {
         multiPassRefresh();
-        try {
-          const sc2 = window.__slotGameScene;
-          if (sc2 && sc2.cameras && sc2.cameras.main) {
-            sc2.cameras.main.fadeIn(220, 3, 2, 2);
-          }
-        } catch (e) {}
-        switching = false;
+        curtainOpen(function () {
+          switching = false;
+        });
       }, 50);
-    };
-
-    try {
-      if (sc.cameras && sc.cameras.main) {
-        sc.cameras.main.fadeOut(140, 3, 2, 2);
-        sc.time.delayedCall(150, doSwitch);
-        return;
-      }
-    } catch (e) {}
-    doSwitch();
+    });
   }
 
   function scheduleRefresh() {
