@@ -85,7 +85,8 @@ const LAYOUT_PRESETS = {
     frame: { x: 507, y: 734, w: 598, h: 1068 },
     bounce: 21,
 
-    jackpot: { x: 540, y: 95, w: 400, h: 64, font: 32, minFont: 20, maxW: 340 },
+    // 字号/可用宽度较横屏各放大 15%（font 32→37, minFont 20→23, maxW 340→391）
+    jackpot: { x: 540, y: 95, w: 400, h: 64, font: 37, minFont: 23, maxW: 391 },
     msg: { x: 512, y: 1322, w: 470, h: 44 },
     msgScale: 1.4,
     plates: {
