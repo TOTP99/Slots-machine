@@ -62,6 +62,9 @@ class SlotGame extends Phaser.Scene {
           this.load.image(LAYOUT.bgKey, LAYOUT.bgFile);
           this.load.image(LAYOUT.ballKey, LAYOUT.ballFile);
           this.load.image(LAYOUT.shaftKey, LAYOUT.shaftFile);
+          SYMBOLS.forEach((s) => {
+            if (s.icon) this.load.image(s.icon, "assets/symbols/" + s.key + ".webp");
+          });
         }
 
         create() {
@@ -281,32 +284,21 @@ class SlotGame extends Phaser.Scene {
 
             const items = [];
 
+            const iconSize = Math.round(Math.min(L.rowH, L.reelWindows[0][1] - L.reelWindows[0][0]) * 0.78);
+
             for (let i = -N; i <= N; i++) {
               const symbol = Phaser.Utils.Array.GetRandom(SYMBOLS);
 
               const bg = this.add
-                .circle(0, i * L.rowH, L.discR, 0x000000, 0.5)
-                .setStrokeStyle(2, 0x2b6cff, 0.45);
+                .circle(0, i * L.rowH, L.discR, 0x000000, 0.35)
+                .setStrokeStyle(2, 0x2b6cff, 0.35);
 
-              const txt = this.add
-                .text(0, i * L.rowH, symbol.label, {
-                  fontSize: L.symFont + "px",
-                  fontStyle: "bold",
-                  color: symbol.color,
-                  stroke: "#090b0b",
-                  strokeThickness: Math.max(2, Math.round(L.symFont * 0.05)),
-                  shadow: {
-                    offsetX: 0,
-                    offsetY: Math.round(L.symFont * 0.04),
-                    color: "#000000",
-                    blur: Math.round(L.symFont * 0.07),
-                    fill: true,
-                  },
-                })
-                .setOrigin(0.5);
+              const icon = this.add
+                .image(0, i * L.rowH, symbol.icon || "sym_seven")
+                .setDisplaySize(iconSize, iconSize);
 
-              container.add([bg, txt]);
-              items.push({ bg, txt, symbol });
+              container.add([bg, icon]);
+              items.push({ bg, icon, symbol });
             }
 
             const reel = {
@@ -1661,19 +1653,17 @@ class SlotGame extends Phaser.Scene {
               const step = settings.step * decelRatio * stepScale;
 
               reel.items.forEach((item) => {
-                item.txt.y += step;
+                item.icon.y += step;
                 item.bg.y += step;
 
-                // 滚出窗口下沿：换个随机符号，接回最上面（保持行距不变）
-                if (item.txt.y > N * L.rowH) {
+                if (item.icon.y > N * L.rowH) {
                   const symbol = Phaser.Utils.Array.GetRandom(SYMBOLS);
-                  const ny = item.txt.y - (2 * N + 1) * L.rowH;
+                  const ny = item.icon.y - (2 * N + 1) * L.rowH;
 
                   item.symbol = symbol;
-                  item.txt.y = ny;
+                  item.icon.y = ny;
                   item.bg.y = ny;
-                  item.txt.setText(symbol.label);
-                  item.txt.setColor(symbol.color);
+                  if (symbol.icon) item.icon.setTexture(symbol.icon);
                 }
               });
             },
@@ -1706,15 +1696,14 @@ class SlotGame extends Phaser.Scene {
             const yy = (i - N) * L.rowH;
 
             item.symbol = randomSymbol;
-            item.txt.y = yy;
+            item.icon.y = yy;
             item.bg.y = yy;
-            item.txt.setText(randomSymbol.label);
-            item.txt.setColor(randomSymbol.color);
+            if (randomSymbol.icon) item.icon.setTexture(randomSymbol.icon);
 
             if (i !== N) {
-              item.txt.setAlpha(0.35);
+              item.icon.setAlpha(0.35);
               this.tweens.add({
-                targets: item.txt,
+                targets: item.icon,
                 alpha: 1,
                 duration: 150,
                 ease: "Sine.easeOut",
@@ -1725,10 +1714,10 @@ class SlotGame extends Phaser.Scene {
           const center = reel.items[N];
 
           center.symbol = finalSymbol;
-          center.txt.setText(finalSymbol.label);
-          center.txt.setColor(finalSymbol.color);
-          center.txt.y = 0;
+          if (finalSymbol.icon) center.icon.setTexture(finalSymbol.icon);
+          center.icon.y = 0;
           center.bg.y = 0;
+          center.icon.setAlpha(1);
 
           this.sfx.reelStop();
 
@@ -1741,7 +1730,7 @@ class SlotGame extends Phaser.Scene {
           });
 
           this.tweens.add({
-            targets: center.txt,
+            targets: center.icon,
             scale: 1.15,
             duration: 140,
             yoyo: true,
