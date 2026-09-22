@@ -48,7 +48,7 @@ const LAYOUT_PRESETS = {
     },
 
     paytableX: 112, paytableY: 280, paytableW: 170, paytableH: 237,
-    dock: { x: 222, y: 520, k: 1.5 },
+    dock: { x: 230, y: 530, k: 1.85 },
     clock: { x: 62, y: 62, k: 1.2 },
     modalScale: 1.65,
 

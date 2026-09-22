@@ -459,52 +459,53 @@ class SlotGame extends Phaser.Scene {
 
           const ctrlGap = Math.min(50, w * 0.27);
 
+          const hitPad = 44; // 加大热区，横屏更好点
+          const bindHit = (tx, ty, labelObj, onDown) => {
+            const hit = this.add
+              .rectangle(tx, ty, hitPad, hitPad, 0x000000, 0.001)
+              .setInteractive({ useHandCursor: true });
+            hit.on("pointerdown", onDown);
+            hit.on("pointerover", () => labelObj.setScale(1.15));
+            hit.on("pointerout", () => labelObj.setScale(1));
+            this.focusHideGroup.push(hit);
+            return hit;
+          };
+
           const prevBtn = this.add
             .text(x - ctrlGap, tY, "◀◀", { fontSize: "22px", fontStyle: "bold", color: "#ffd700" })
-            .setOrigin(0.5)
-            .setInteractive({ useHandCursor: true });
-          prevBtn.on("pointerdown", () => {
+            .setOrigin(0.5);
+          bindHit(x - ctrlGap, tY, prevBtn, () => {
             this.sfx.click();
             bgMusic.skipPrev();
             this.saveGameState();
           });
-          prevBtn.on("pointerover", () => prevBtn.setScale(1.1));
-          prevBtn.on("pointerout", () => prevBtn.setScale(1));
           this.focusHideGroup.push(prevBtn);
 
           this.sidePlayPauseBtn = this.add
             .text(x, tY, bgMusic.isPlaying() ? "❚❚" : "▶", { fontSize: "22px", fontStyle: "bold", color: "#ffd700" })
-            .setOrigin(0.5)
-            .setInteractive({ useHandCursor: true });
-          this.sidePlayPauseBtn.on("pointerdown", () => {
+            .setOrigin(0.5);
+          bindHit(x, tY, this.sidePlayPauseBtn, () => {
             this.sfx.click();
             if (bgMusic.isPlaying()) {
               bgMusic.pause();
+              bgMusic._wantPlay = false;
+              try { localStorage.setItem("bgMusicWasPlaying", "false"); } catch (e) {}
             } else {
               bgMusic.play();
             }
             this.refreshPlayPauseIcon();
             this.saveGameState();
           });
-          this.sidePlayPauseBtn.on("pointerover", () =>
-            this.sidePlayPauseBtn.setScale(1.1),
-          );
-          this.sidePlayPauseBtn.on("pointerout", () =>
-            this.sidePlayPauseBtn.setScale(1),
-          );
           this.focusHideGroup.push(this.sidePlayPauseBtn);
 
           const nextBtn = this.add
             .text(x + ctrlGap, tY, "▶▶", { fontSize: "22px", fontStyle: "bold", color: "#ffd700" })
-            .setOrigin(0.5)
-            .setInteractive({ useHandCursor: true });
-          nextBtn.on("pointerdown", () => {
+            .setOrigin(0.5);
+          bindHit(x + ctrlGap, tY, nextBtn, () => {
             this.sfx.click();
             bgMusic.skipNext();
             this.saveGameState();
           });
-          nextBtn.on("pointerover", () => nextBtn.setScale(1.1));
-          nextBtn.on("pointerout", () => nextBtn.setScale(1));
           this.focusHideGroup.push(nextBtn);
 
           this.sideTrackLabel = this.add
@@ -580,6 +581,16 @@ class SlotGame extends Phaser.Scene {
             this.focusHideGroup.slice(_dockStart),
             x, y, dk.x, dk.y, dk.k, 20,
           );
+
+          // 点面板外任意处收起左侧栏（繁→简）；深度低于 dock，不挡面板内点击
+          this.dockDismissZone = this.add
+            .rectangle(LAYOUT.width / 2, LAYOUT.height / 2, LAYOUT.width, LAYOUT.height, 0x000000, 0.001)
+            .setDepth(19)
+            .setInteractive()
+            .setVisible(false);
+          this.dockDismissZone.on("pointerdown", () => {
+            if (!this.focusMode) this.toggleFocusMode();
+          });
         };
 
         // 把一批已创建的对象装进容器：以 (ox,oy) 为原坐标中心，放大 k 倍后落在 (tx,ty)
@@ -2213,6 +2224,12 @@ class SlotGame extends Phaser.Scene {
           this.focusHideGroup.forEach((obj) => {
             if (obj) obj.setVisible(!this.focusMode);
           });
+          // 面板可见时开启全屏收起热区
+          if (this.dockDismissZone) {
+            this.dockDismissZone.setVisible(!this.focusMode);
+            if (!this.focusMode) this.dockDismissZone.setInteractive();
+            else this.dockDismissZone.disableInteractive();
+          }
           this.refreshModeLabel();
         };
 

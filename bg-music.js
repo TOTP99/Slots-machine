@@ -14,6 +14,8 @@ class BGMusic {
 
     const savedEnabled = localStorage.getItem("bgMusicEnabled");
     this.enabled = savedEnabled === null ? true : savedEnabled === "true";
+    // 刷新前是否在播：用于手势解锁后自动续播
+    this._wantPlay = localStorage.getItem("bgMusicWasPlaying") === "true";
 
     const savedMode = localStorage.getItem("bgMusicPlayMode");
     const savedShuffleLegacy = localStorage.getItem("bgMusicShuffle") === "true";
@@ -68,6 +70,8 @@ class BGMusic {
       if (Number.isFinite(t) && t >= 0) {
         localStorage.setItem("bgMusicCurrentTime", String(Math.floor(t * 10) / 10));
       }
+      const playing = !this.audio.paused && !this.audio.ended && this.enabled;
+      localStorage.setItem("bgMusicWasPlaying", String(!!playing || !!this._wantPlay));
     } catch (e) {}
   }
 
@@ -182,6 +186,15 @@ class BGMusic {
       this.audio.addEventListener("canplay", applySeek, { once: true });
     }
 
+    // 刷新后若之前在播，就绪后尝试续播（仍受浏览器自动播放策略限制，首次手势必成功）
+    if (this._wantPlay && this.enabled) {
+      const resume = () => {
+        try { this.tryPlay(); } catch (e) {}
+      };
+      this.audio.addEventListener("canplay", resume, { once: true });
+      setTimeout(resume, 400);
+    }
+
     this._notifyTrackChange();
   }
 
@@ -279,15 +292,23 @@ class BGMusic {
       this.enabled = true;
       localStorage.setItem("bgMusicEnabled", "true");
     }
+    this._wantPlay = true;
     this._fadeGainTo(1, 0.05);
     this._playAudio();
+    try { localStorage.setItem("bgMusicWasPlaying", "true"); } catch (e) {}
   }
 
   async tryPlay() {
-    if (!this.enabled) return;
+    if (!this.enabled && !this._wantPlay) return;
+    if (!this.enabled && this._wantPlay) {
+      this.enabled = true;
+      try { localStorage.setItem("bgMusicEnabled", "true"); } catch (e) {}
+    }
     this.ensureAnalyser();
+    this._wantPlay = true;
     this._fadeGainTo(1, 0.05);
     this._playAudio();
+    try { localStorage.setItem("bgMusicWasPlaying", "true"); } catch (e) {}
   }
 
   _fadeGainTo(target, seconds) {
@@ -325,8 +346,14 @@ class BGMusic {
   setEnabled(enabled) {
     this.enabled = enabled;
     localStorage.setItem("bgMusicEnabled", String(enabled));
-    if (enabled) this.tryPlay();
-    else this.pause();
+    if (enabled) {
+      this._wantPlay = true;
+      this.tryPlay();
+    } else {
+      this._wantPlay = false;
+      try { localStorage.setItem("bgMusicWasPlaying", "false"); } catch (e) {}
+      this.pause();
+    }
   }
 }
 
