@@ -15,30 +15,9 @@ class DigitalClock {
   }
 
   _build() {
-    const scene = this.scene;
-    const c = LAYOUT.clockSign;
-    if (!c) return;
-
-    // 盖住底图里原来的 "ROYALE" 文字：深色圆角块，贴近招牌内部的深蓝底色
-    this.patch = scene.add.graphics().setPosition(c.x, c.y).setDepth(12);
-    this.patch.fillStyle(0x0a0f24, 0.98);
-    this.patch.fillRoundedRect(-c.w / 2, -c.h / 2, c.w, c.h, Math.min(10, c.h * 0.18));
-
-    this.text = scene.add
-      .text(c.x, c.y, "00:00:00", {
-        fontFamily: "Arial, sans-serif",
-        fontStyle: "bold",
-        color: "#ffd76a",
-        stroke: "#1a0f00",
-        strokeThickness: 3,
-        shadow: { offsetX: 0, offsetY: 0, color: "#ffb020", blur: 10, fill: true },
-      })
-      .setOrigin(0.5)
-      .setDepth(13);
-
-    this._fitFont(c.w * 0.94, c.h * 0.86);
-    this._tick();
-    this.timer = setInterval(() => this._tick(), 1000);
+    // 时分秒显示已去掉：不再绘制盖板与 HH:MM:SS 文字
+    // 保留类结构，避免其它引用报错；整刻钟铃声与播放图标刷新一并停用
+    return;
   }
 
   // 自动算出能塞进招牌原 "ROYALE" 位置的最大字号，再整体缩小 33%（更精致，不占满整块招牌）

@@ -80,7 +80,8 @@ class SlotGame extends Phaser.Scene {
           this.createSettingsModal();
           this.createKeyboardControls();
           this.createAmbientAnimations();
-          this.clock = new DigitalClock(this);
+          // 时分秒显示已去掉（不再创建 DigitalClock）
+          this.clock = null;
           this.toggleFocusMode(true); // 默认「藏」
           this.updateDisplay();
         }
