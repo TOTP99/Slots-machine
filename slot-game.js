@@ -104,22 +104,6 @@ class SlotGame extends Phaser.Scene {
           }
         };
 
-        SlotGame.prototype.createPanel = function(x, y, width, height, fill = UI.panel, alpha = 0.96, hideGroup = null) {
-          const radius = Math.min(PANEL_RADIUS, height / 2, width / 2);
-          const topColor = this.shadeColor(fill, 22);
-          const bottomColor = this.shadeColor(fill, -16);
-
-          const glow = this.add.graphics().setPosition(x, y);
-          glow.fillStyle(UI.goldDim, 0.12);
-          glow.fillRoundedRect(-(width + 8) / 2, -(height + 8) / 2, width + 8, height + 8, radius + 4);
-
-          const panel = this.add.graphics().setPosition(x, y);
-          this.drawGradientPanel(panel, width, height, radius, topColor, bottomColor, alpha, UI.gold, 1.4);
-
-          if (hideGroup) hideGroup.push(glow, panel);
-          return panel;
-        };
-
         SlotGame.prototype.setControlActive = function(bg, txt, active) {
           const fill = active ? UI.activeFill : 0x101c3a;
           const top = this.shadeColor(fill, active ? 16 : 10);
@@ -426,24 +410,33 @@ class SlotGame extends Phaser.Scene {
           const w = LAYOUT.paytableW;
           const h = LAYOUT.paytableH;
 
-          this.createPanel(x, y, w, h, 0x081020, 0.96, this.focusHideGroup);
+          // 赌场风面板：酒红丝绒底 + 双层金边 + 四角金点
+          const dockPanel = this.add.graphics().setPosition(x, y);
+          dockPanel.fillGradientStyle(0x2a0a14, 0x2a0a14, 0x0c060a, 0x0c060a, 0.96);
+          dockPanel.fillRoundedRect(-w / 2, -h / 2, w, h, 14);
+          dockPanel.lineStyle(2, 0xffd700, 0.95);
+          dockPanel.strokeRoundedRect(-w / 2, -h / 2, w, h, 14);
+          dockPanel.lineStyle(1, 0xc9a227, 0.65);
+          dockPanel.strokeRoundedRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 11);
+          const cdot = (ox, oy) => {
+            dockPanel.fillStyle(0xffd700, 0.85);
+            dockPanel.fillCircle(ox, oy, 2.5);
+          };
+          const inset = 10;
+          cdot(-w / 2 + inset, -h / 2 + inset);
+          cdot(w / 2 - inset, -h / 2 + inset);
+          cdot(-w / 2 + inset, h / 2 - inset);
+          cdot(w / 2 - inset, h / 2 - inset);
+          this.focusHideGroup.push(dockPanel);
 
           this.updateLiveClock();
           this.clockTimer = setInterval(() => this.updateLiveClock(), 250);
 
-          // 长方形面板内自上而下均匀排布：
-          // 💿 → 播放三键 → 曲号 → 双行 PAYTABLE / SETTING 按键
-          // 原因：emoji 实际绘制高度常大于 fontSize，若中心点太靠上会被圆角面板裁切
-          // 顶部至少留出 ~36px（半高 + 圆角内边距），再按剩余高度均分其余元素
-          const iconFont = 50; // 原 56，缩小约 10%
-          const iconHalf = iconFont * 0.55; // emoji 视觉半高略大于字号一半
-          const topSafe = 14; // 圆角与描边内边距
+          const iconFont = 50;
+          const iconHalf = iconFont * 0.55;
+          const topSafe = 14;
           const frameH = 52;
           const bottomSafe = 14;
-
-          // 整体间距压缩至原来的 75%，内容块在面板内上下居中
-          // 内容跨度固定按"原始面板高 306"折算，与当前 LAYOUT.paytableH 解耦，
-          // 这样以后单独缩小面板高度只会收窄上下留白，不会连带把内容再压小
           const SPACING_SCALE = 0.75;
           const REFERENCE_PANEL_H = 306;
           const fullContentSpan = REFERENCE_PANEL_H - topSafe - bottomSafe - 2;
@@ -453,21 +446,17 @@ class SlotGame extends Phaser.Scene {
 
           const micY = contentTop + iconHalf;
           const btnCenterY = contentBottom - frameH / 2;
-
-          // 中间区域（播放键 + 曲号）在图标底边与按钮顶边之间居中均分
           const midTop = micY + iconHalf + 10 * SPACING_SCALE;
           const midBottom = btnCenterY - frameH / 2 - 10 * SPACING_SCALE;
           const midSpan = Math.max(midBottom - midTop, 1);
           const tY = midTop + midSpan * 0.32;
           const trackY = midTop + midSpan * 0.72;
 
-          // 唱片图标
           const micIcon = this.add
-            .text(x, micY, "💿", { fontSize: iconFont + "px" })
+            .text(x, micY, "🎏", { fontSize: iconFont + "px" })
             .setOrigin(0.5);
           this.focusHideGroup.push(micIcon);
 
-          // 播放控制：⏮️  ⏸️/▶️  ⏭️
           const ctrlGap = Math.min(50, w * 0.27);
 
           const prevBtn = this.add
@@ -518,43 +507,39 @@ class SlotGame extends Phaser.Scene {
           nextBtn.on("pointerout", () => nextBtn.setScale(1));
           this.focusHideGroup.push(nextBtn);
 
-          // 曲号
           this.sideTrackLabel = this.add
-            .text(x, trackY, "01 / 56", {
-              fontSize: "19px", // 原 15px，放大约 29%
+            .text(x, trackY, "01 / 99", {
+              fontSize: "18px",
               fontStyle: "bold",
               color: "#ffd700",
+              stroke: "#1a0808",
+              strokeThickness: 2,
             })
             .setOrigin(0.5);
-          this.refreshTrackLabel();
           this.focusHideGroup.push(this.sideTrackLabel);
-
-          // 曲目切换时同步刷新曲号
-          if (!window.__trackLabelHooked) {
-            window.__trackLabelHooked = true;
-            bgMusic.onTrackChange(() => {
-              const sc = window.__slotGameScene;
-              if (sc && sc.refreshTrackLabel) sc.refreshTrackLabel();
-            });
+          this.refreshTrackLabel();
+          if (typeof bgMusic.onTrackChange === "function") {
+            bgMusic.onTrackChange(() => this.refreshTrackLabel());
           }
 
-          // 双行一体金框按键：PAYTABLE / SETTING → 打开赔率+设置弹窗
-          // 宽度收窄约 10%
           const frameW = Math.round((w - 24) * 0.9);
           const frame = this.add.graphics().setPosition(x, btnCenterY);
-          const drawCtrlFrame = (strokeWidth, strokeColor) =>
-            this.drawGradientPanel(
-              frame,
-              frameW,
-              frameH,
-              12,
-              this.shadeColor(0x0c1630, 14),
-              this.shadeColor(0x0c1630, -8),
-              0.92,
-              strokeColor,
-              strokeWidth,
+          const drawCtrlFrame = (hover) => {
+            frame.clear();
+            frame.fillGradientStyle(
+              hover ? 0x3d1520 : 0x2a0a14,
+              hover ? 0x3d1520 : 0x2a0a14,
+              hover ? 0x1a0a10 : 0x0c060a,
+              hover ? 0x1a0a10 : 0x0c060a,
+              0.95,
             );
-          drawCtrlFrame(1, UI.gold);
+            frame.fillRoundedRect(-frameW / 2, -frameH / 2, frameW, frameH, 12);
+            frame.lineStyle(hover ? 2.2 : 1.6, 0xffd700, hover ? 1 : 0.9);
+            frame.strokeRoundedRect(-frameW / 2, -frameH / 2, frameW, frameH, 12);
+            frame.lineStyle(1, 0xc9a227, 0.55);
+            frame.strokeRoundedRect(-frameW / 2 + 3, -frameH / 2 + 3, frameW - 6, frameH - 6, 10);
+          };
+          drawCtrlFrame(false);
           frame.setInteractive(
             new Phaser.Geom.Rectangle(-frameW / 2, -frameH / 2, frameW, frameH),
             Phaser.Geom.Rectangle.Contains,
@@ -568,6 +553,8 @@ class SlotGame extends Phaser.Scene {
               color: "#ffd700",
               align: "center",
               lineSpacing: 4,
+              stroke: "#1a0808",
+              strokeThickness: 1,
             })
             .setOrigin(0.5);
 
@@ -577,19 +564,17 @@ class SlotGame extends Phaser.Scene {
           };
           frame.on("pointerdown", openCtrl);
           frame.on("pointerover", () => {
-            drawCtrlFrame(2, 0xffd700);
+            drawCtrlFrame(true);
             ctrlLabel.setScale(1.05);
           });
           frame.on("pointerout", () => {
-            drawCtrlFrame(1, UI.gold);
+            drawCtrlFrame(false);
             ctrlLabel.setScale(1);
           });
           ctrlLabel.setInteractive({ useHandCursor: true });
           ctrlLabel.on("pointerdown", openCtrl);
           this.focusHideGroup.push(frame, ctrlLabel);
 
-          // Royale 换皮：面板内部仍按原 170×237 的坐标搭好，整体装进一个容器，
-          // 再按 dock.k 放大并挪到 dock.x/dock.y（原坐标系里的中心是 x,y）。
           const dk = LAYOUT.dock;
           this.dockContainer = this.wrapInScaledContainer(
             this.focusHideGroup.slice(_dockStart),

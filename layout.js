@@ -135,8 +135,6 @@ const UI = {
   activeFill: 0x8d6f32,
   ruby: 0xb3122b,
 };
-const PANEL_RADIUS = 14;
-
 function fitTextToBox(textObject, value, maxWidth, baseFontSize = 20, minFontSize = 12) {
   if (!textObject) return;
   textObject.setText(value);
