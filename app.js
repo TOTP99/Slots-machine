@@ -74,9 +74,9 @@
   function persistAll() {
     try {
       const sc = window.__slotGameScene;
-      if (sc && sc.clockTimer) {
-        clearInterval(sc.clockTimer);
-        sc.clockTimer = null;
+      if (sc && sc.clock && typeof sc.clock.destroy === "function") {
+        sc.clock.destroy();
+        sc.clock = null;
       }
       if (sc && typeof sc.saveGameState === "function") sc.saveGameState(true);
       if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {

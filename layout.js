@@ -49,7 +49,10 @@ const LAYOUT_PRESETS = {
 
     paytableX: 112, paytableY: 280, paytableW: 170, paytableH: 237,
     dock: { x: 230, y: 530, k: 1.85 },
-    clock: { x: 62, y: 62, k: 1.2 },
+    // 招牌上原 "ROYALE" 文字的位置：换成 HH:MM:SS 数字时钟
+    clockSign: { x: 1320, y: 231, w: 290, h: 62 },
+    // 右下角硬币（原皇冠+R+ROYALE）：换成设置入口按钮
+    coinButton: { x: 1445, y: 915, r: 85 },
     modalScale: 1.65,
 
     lever: {
@@ -92,7 +95,10 @@ const LAYOUT_PRESETS = {
 
     paytableX: 112, paytableY: 280, paytableW: 170, paytableH: 237,
     dock: { x: 136, y: 720, k: 1.6 },
-    clock: { x: 818, y: 100, k: 1.4 },
+    // 招牌上原 "ROYALE" 文字的位置：换成 HH:MM:SS 数字时钟
+    clockSign: { x: 885, y: 279, w: 240, h: 66 },
+    // 右下角硬币（原皇冠+R+ROYALE）：换成设置入口按钮
+    coinButton: { x: 875, y: 1275, r: 115 },
     modalScale: 1.55,
 
     lever: {

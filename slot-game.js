@@ -40,9 +40,9 @@ class SlotGame extends Phaser.Scene {
 
         // 场景重启时重置运行期状态
         init() {
-          if (this.clockTimer) {
-            clearInterval(this.clockTimer);
-            this.clockTimer = null;
+          if (this.clock) {
+            this.clock.destroy();
+            this.clock = null;
           }
           this.reels = [];
           this.focusHideGroup = [];
@@ -80,6 +80,7 @@ class SlotGame extends Phaser.Scene {
           this.createSettingsModal();
           this.createKeyboardControls();
           this.createAmbientAnimations();
+          this.clock = new DigitalClock(this);
           this.toggleFocusMode(true); // 默认「藏」
           this.updateDisplay();
         }
@@ -181,26 +182,6 @@ class SlotGame extends Phaser.Scene {
               ease: "Sine.easeInOut",
             });
           });
-        };
-
-        SlotGame.prototype.updateLiveClock = function() {
-          if (!this.rightClockText) return;
-          const now = new Date();
-          const hh = String(now.getHours()).padStart(2, "0");
-          const mm = String(now.getMinutes()).padStart(2, "0");
-          this.rightClockText.setText(`${hh}:${mm}`);
-
-          const quarterKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${Math.floor(now.getMinutes() / 15)}`;
-          if (
-            now.getSeconds() === 0 &&
-            now.getMilliseconds() < 1000 &&
-            this.lastQuarterKey !== quarterKey
-          ) {
-            this.lastQuarterKey = quarterKey;
-            this.sfx.quarterBell();
-          }
-
-          this.refreshPlayPauseIcon();
         };
 
         SlotGame.prototype.createMachine = function() {
@@ -421,9 +402,6 @@ class SlotGame extends Phaser.Scene {
           cdot(w / 2 - inset, h / 2 - inset);
           this.focusHideGroup.push(dockPanel);
 
-          this.updateLiveClock();
-          this.clockTimer = setInterval(() => this.updateLiveClock(), 250);
-
           const iconFont = 50;
           const iconHalf = iconFont * 0.55;
           const topSafe = 14;
@@ -614,22 +592,7 @@ class SlotGame extends Phaser.Scene {
         SlotGame.prototype.createRightControls = function() {
           const L = LAYOUT.lever;
 
-          this.createRightClockToggle(855);
-          const ck = LAYOUT.clock;
-          this.clockContainer = this.wrapInScaledContainer(
-            [
-              this.rightClockShadow,
-              this.rightClockToggleBg,
-              this.rightClockHighlight,
-              this.rightClockText,
-              this.modeChipBg,
-              this.modeLabelSimple,
-              this.modeLabelComplex,
-              this.rightClockRay,
-              this.rightClockToggleHit,
-            ],
-            855, 165, ck.x, ck.y, ck.k, 20,
-          );
+          this.createCoinMenuButton();
 
           this.leverShaft = this.add
             .image(L.shaftX, L.baseY, LAYOUT.shaftKey)
@@ -717,97 +680,83 @@ class SlotGame extends Phaser.Scene {
           gfx.strokeRoundedRect(-w / 2, -h / 2, w, h, radius);
         };
 
-        SlotGame.prototype.createRightClockToggle = function(lx) {
-          const btnW = 76;
-          const btnH = 82;
-          const cy = 165;
-          const clockY = cy - 14;
-          const modeY = cy + 22;
-          const btnRadius = 14;
-          const modeHalf = 16;
-          const chipW = 28;
-          const chipH = 20;
-          const chipR = 7;
+        // 右下角"硬币"菜单入口：盖住底图原来的皇冠+R+ROYALE，
+        // 重画一枚金币（皇冠 + 中央音符 + 底部弧形 "SET-UP"），
+        // 常驻显示、常驻呼吸光晕，点击后触发原时钟键的下一级菜单（藏/显侧边栏）。
+        SlotGame.prototype.createCoinMenuButton = function() {
+          const cb = LAYOUT.coinButton;
+          if (!cb) return;
+          const { x, y, r } = cb;
+          this._coinR = r;
 
-          this._clockModeHalf = modeHalf;
-          this._clockChipW = chipW;
-          this._clockChipH = chipH;
-          this._clockChipR = chipR;
-          this._clockBtnW = btnW;
-          this._clockBtnH = btnH;
-          this._clockBtnR = btnRadius;
+          this.coinGlow = this.add
+            .circle(x, y, r * 1.22, 0xffd700, 1)
+            .setBlendMode(Phaser.BlendModes.ADD)
+            .setAlpha(0.28)
+            .setDepth(11.5);
+          this.tweens.add({
+            targets: this.coinGlow,
+            alpha: { from: 0.18, to: 0.5 },
+            scale: { from: 0.94, to: 1.08 },
+            duration: 1400,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
 
-          this.rightClockShadow = this.add.graphics().setPosition(lx + 2, cy + 3);
-          this.rightClockShadow.fillStyle(0x000000, 0.45);
-          this.rightClockShadow.fillRoundedRect(
-            -btnW / 2, -btnH / 2, btnW, btnH, btnRadius,
+          this.coinFace = this.add.graphics().setPosition(x, y).setDepth(12);
+          this._drawCoinFace(false);
+
+          this.coinHighlight = this.add
+            .ellipse(x - r * 0.28, y - r * 0.32, r * 0.9, r * 0.5, 0xffffff, 0.16)
+            .setAngle(-25)
+            .setDepth(12.6);
+
+          this.coinCrown = this.add
+            .text(x, y - r * 0.52, "👑", { fontSize: Math.round(r * 0.5) + "px" })
+            .setOrigin(0.5)
+            .setDepth(13);
+
+          this.coinNote = this.add
+            .text(x, y, "♪", {
+              fontFamily: "Arial, sans-serif",
+              fontStyle: "bold",
+              fontSize: Math.round(r * 0.62) + "px",
+              color: "#3a2408",
+            })
+            .setOrigin(0.5)
+            .setDepth(13);
+
+          this.coinArcText = this.drawArcText(
+            "SET-UP",
+            x, y, r * 0.72, 90, 100,
+            {
+              fontFamily: "Arial, sans-serif",
+              fontStyle: "bold",
+              fontSize: Math.round(r * 0.2) + "px",
+              color: "#3a2408",
+            },
+            13,
           );
 
-          this.rightClockToggleBg = this.add.graphics().setPosition(lx, cy);
-          this._drawClockButton3D(false);
+          this.coinRay = this.add.graphics().setPosition(x, y).setAlpha(0).setDepth(15);
 
-          this.rightClockHighlight = this.add.graphics().setPosition(lx, cy);
-          this.rightClockHighlight.fillStyle(0xffffff, 0.12);
-          this.rightClockHighlight.fillRoundedRect(
-            -btnW / 2 + 4, -btnH / 2 + 3, btnW - 8, Math.max(10, btnH * 0.28), btnRadius - 4,
-          );
-
-          this.rightClockText = this.add
-            .text(lx, clockY, "--:--", {
-              fontSize: "21px",
-              fontStyle: "bold",
-              color: "#ffd700",
-              stroke: "#000000",
-              strokeThickness: 1,
-              shadow: { offsetX: 0, offsetY: 1, color: "#000000", blur: 4, fill: true },
-            })
-            .setOrigin(0.5);
-
-          this.modeChipBg = this.add.graphics().setPosition(lx, modeY);
-
-          this.modeLabelSimple = this.add
-            .text(lx - modeHalf, modeY, "藏", {
-              fontSize: "13px",
-              fontStyle: "bold",
-              stroke: "#000000",
-              strokeThickness: 1,
-            })
-            .setOrigin(0.5);
-
-          this.modeLabelComplex = this.add
-            .text(lx + modeHalf, modeY, "显", {
-              fontSize: "13px",
-              fontStyle: "bold",
-              stroke: "#000000",
-              strokeThickness: 1,
-            })
-            .setOrigin(0.5);
-
-          this.refreshModeLabel();
-
-          this.rightClockRay = this.add.graphics().setPosition(lx, cy).setAlpha(0).setDepth(21);
-
-          this.rightClockToggleHit = this.add
-            .rectangle(lx, cy, Math.round(btnW * 1.18), Math.round(btnH * 1.16), 0x000000, 0.01)
+          this.coinHit = this.add
+            .circle(x, y, r * 1.12, 0x000000, 0.001)
+            .setDepth(16)
             .setInteractive({ useHandCursor: true });
 
-          this.rightClockToggleHit.on("pointerover", () => {
-            this._drawClockButton3D(true);
-          });
-          this.rightClockToggleHit.on("pointerout", () => {
-            this._drawClockButton3D(false);
-          });
-          this.rightClockToggleHit.on("pointerdown", () => {
+          this.coinHit.on("pointerover", () => this._drawCoinFace(true));
+          this.coinHit.on("pointerout", () => this._drawCoinFace(false));
+          this.coinHit.on("pointerdown", () => {
             this.sfx.click();
             this.tweens.add({
               targets: [
-                this.rightClockToggleBg,
-                this.rightClockHighlight,
-                this.rightClockShadow,
-                this.rightClockText,
-                this.modeChipBg,
-                this.modeLabelSimple,
-                this.modeLabelComplex,
+                this.coinFace,
+                this.coinHighlight,
+                this.coinCrown,
+                this.coinNote,
+                ...this.coinArcText,
               ],
               scaleX: 0.92,
               scaleY: 0.92,
@@ -815,53 +764,67 @@ class SlotGame extends Phaser.Scene {
               yoyo: true,
               ease: "Sine.easeInOut",
             });
-            this._burstClockRays(lx, cy);
+            this._burstCoinRays(x, y);
             this.toggleFocusMode();
           });
         };
 
-        SlotGame.prototype._drawClockButton3D = function(hover) {
-          const g = this.rightClockToggleBg;
+        SlotGame.prototype._drawCoinFace = function(hover) {
+          const g = this.coinFace;
           if (!g) return;
-          const w = this._clockBtnW || 76;
-          const h = this._clockBtnH || 82;
-          const r = this._clockBtnR || 14;
+          const r = this._coinR || 85;
           g.clear();
-          g.fillGradientStyle(
-            hover ? 0x1a2a4a : 0x121c36,
-            hover ? 0x1a2a4a : 0x121c36,
-            hover ? 0x0a1020 : 0x080e1c,
-            hover ? 0x0a1020 : 0x080e1c,
-            0.96,
-          );
-          g.fillRoundedRect(-w / 2, -h / 2, w, h, r);
-          g.lineStyle(hover ? 3.2 : 2.2, UI.ruby, 1);
-          g.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
-          g.lineStyle(1, UI.gold, hover ? 0.85 : 0.55);
-          g.strokeRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h - 6, Math.max(4, r - 3));
+          const top = hover ? 0xffe27a : 0xffd700;
+          const bottom = hover ? 0xb8860b : 0x9a6a12;
+          g.fillGradientStyle(top, top, bottom, bottom, 1);
+          g.fillCircle(0, 0, r);
+          g.lineStyle(hover ? 4 : 3, 0x3a2408, 0.9);
+          g.strokeCircle(0, 0, r);
+          g.lineStyle(1.4, 0xfff3c4, hover ? 0.9 : 0.7);
+          g.strokeCircle(0, 0, r * 0.86);
         };
 
-        SlotGame.prototype._burstClockRays = function(cx, cy) {
-          const ray = this.rightClockRay;
+        // 通用贴圆弧文字：逐字符旋转摆放，centerAngleDeg=90 是圆心正下方
+        SlotGame.prototype.drawArcText = function(str, cx, cy, radius, centerAngleDeg, totalArcDeg, style, depth) {
+          const chars = str.split("");
+          const n = chars.length;
+          const step = n > 1 ? totalArcDeg / (n - 1) : 0;
+          const startDeg = centerAngleDeg + totalArcDeg / 2;
+          const objs = [];
+          chars.forEach((ch, i) => {
+            const deg = startDeg - step * i;
+            const rad = Phaser.Math.DegToRad(deg);
+            const px = cx + radius * Math.cos(rad);
+            const py = cy + radius * Math.sin(rad);
+            const t = this.add.text(px, py, ch, style).setOrigin(0.5).setDepth(depth || 13);
+            t.setRotation(rad - Math.PI / 2);
+            objs.push(t);
+          });
+          return objs;
+        };
+
+        SlotGame.prototype._burstCoinRays = function(cx, cy) {
+          const ray = this.coinRay;
           if (!ray) return;
+          const r = this._coinR || 85;
           ray.clear();
           ray.setPosition(cx, cy);
           ray.setAlpha(1);
           const rays = 12;
           for (let i = 0; i < rays; i++) {
             const a = (Math.PI * 2 * i) / rays + Math.random() * 0.15;
-            const len = 28 + Math.random() * 36;
+            const len = r * 0.35 + Math.random() * r * 0.5;
             const c = i % 2 === 0 ? 0xffd700 : 0x39b8ff;
             ray.lineStyle(2, c, 0.95);
             ray.beginPath();
-            ray.moveTo(Math.cos(a) * 18, Math.sin(a) * 18);
+            ray.moveTo(Math.cos(a) * r * 0.3, Math.sin(a) * r * 0.3);
             ray.lineTo(Math.cos(a) * len, Math.sin(a) * len);
             ray.strokePath();
           }
           ray.fillStyle(0xffd700, 0.35);
-          ray.fillCircle(0, 0, 16);
+          ray.fillCircle(0, 0, r * 0.2);
           ray.fillStyle(0xffffff, 0.2);
-          ray.fillCircle(0, 0, 8);
+          ray.fillCircle(0, 0, r * 0.1);
 
           this.tweens.killTweensOf(ray);
           ray.setScale(0.6);
@@ -2169,45 +2132,6 @@ class SlotGame extends Phaser.Scene {
           });
         };
 
-        SlotGame.prototype.refreshModeLabel = function() {
-          if (!this.modeLabelSimple || !this.modeLabelComplex) return;
-
-          const dimColor = "#8a8070";
-          const activeText = "#17120a";
-          const isSimple = !!this.focusMode;
-
-          this.modeLabelSimple.setColor(isSimple ? activeText : dimColor);
-          this.modeLabelComplex.setColor(isSimple ? dimColor : activeText);
-          this.modeLabelSimple.setAlpha(isSimple ? 1 : 0.55);
-          this.modeLabelComplex.setAlpha(isSimple ? 0.55 : 1);
-
-          if (!this.modeChipBg) return;
-
-          const chipW = this._clockChipW || 28;
-          const chipH = this._clockChipH || 20;
-          const chipR = this._clockChipR || 7;
-          const half = this._clockModeHalf || 16;
-          const offsetX = isSimple ? -half : half;
-
-          this.modeChipBg.clear();
-          this.modeChipBg.fillStyle(0xffd700, 0.96);
-          this.modeChipBg.fillRoundedRect(
-            offsetX - chipW / 2,
-            -chipH / 2,
-            chipW,
-            chipH,
-            chipR,
-          );
-          this.modeChipBg.lineStyle(1.4, 0xfff3c4, 0.95);
-          this.modeChipBg.strokeRoundedRect(
-            offsetX - chipW / 2,
-            -chipH / 2,
-            chipW,
-            chipH,
-            chipR,
-          );
-        };
-
         SlotGame.prototype.toggleFocusMode = function(silent) {
           this.focusMode = !this.focusMode;
           if (!silent) this.sfx.click();
@@ -2220,7 +2144,6 @@ class SlotGame extends Phaser.Scene {
             if (!this.focusMode) this.dockDismissZone.setInteractive();
             else this.dockDismissZone.disableInteractive();
           }
-          this.refreshModeLabel();
           if (!silent && !this.focusMode && typeof this.setMessage === "function") {
             this.setMessage("点击空白处可关闭", 16);
           }
