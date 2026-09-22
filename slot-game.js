@@ -80,7 +80,7 @@ class SlotGame extends Phaser.Scene {
           this.createSettingsModal();
           this.createKeyboardControls();
           this.createAmbientAnimations();
-          this.toggleFocusMode(true); // 默认「简」
+          this.toggleFocusMode(true); // 默认「藏」
           this.updateDisplay();
         }
 
@@ -574,7 +574,7 @@ class SlotGame extends Phaser.Scene {
             x, y, dk.x, dk.y, dk.k, 20,
           );
 
-          // 点面板外任意处收起左侧栏（繁→简）；深度低于 dock，不挡面板内点击
+          // 点面板外任意处收起左侧栏（显→藏）
           this.dockDismissZone = this.add
             .rectangle(LAYOUT.width / 2, LAYOUT.height / 2, LAYOUT.width, LAYOUT.height, 0x000000, 0.001)
             .setDepth(19)
@@ -766,7 +766,7 @@ class SlotGame extends Phaser.Scene {
           this.modeChipBg = this.add.graphics().setPosition(lx, modeY);
 
           this.modeLabelSimple = this.add
-            .text(lx - modeHalf, modeY, "简", {
+            .text(lx - modeHalf, modeY, "藏", {
               fontSize: "13px",
               fontStyle: "bold",
               stroke: "#000000",
@@ -775,7 +775,7 @@ class SlotGame extends Phaser.Scene {
             .setOrigin(0.5);
 
           this.modeLabelComplex = this.add
-            .text(lx + modeHalf, modeY, "繁", {
+            .text(lx + modeHalf, modeY, "显", {
               fontSize: "13px",
               fontStyle: "bold",
               stroke: "#000000",
@@ -788,7 +788,7 @@ class SlotGame extends Phaser.Scene {
           this.rightClockRay = this.add.graphics().setPosition(lx, cy).setAlpha(0).setDepth(21);
 
           this.rightClockToggleHit = this.add
-            .rectangle(lx, cy, btnW, btnH, 0x000000, 0.01)
+            .rectangle(lx, cy, Math.round(btnW * 1.18), Math.round(btnH * 1.16), 0x000000, 0.01)
             .setInteractive({ useHandCursor: true });
 
           this.rightClockToggleHit.on("pointerover", () => {
@@ -2172,12 +2172,14 @@ class SlotGame extends Phaser.Scene {
         SlotGame.prototype.refreshModeLabel = function() {
           if (!this.modeLabelSimple || !this.modeLabelComplex) return;
 
-          const dimColor = "#6a6a6a";
-          const activeText = UI.textDark;
+          const dimColor = "#8a8070";
+          const activeText = "#17120a";
           const isSimple = !!this.focusMode;
 
           this.modeLabelSimple.setColor(isSimple ? activeText : dimColor);
           this.modeLabelComplex.setColor(isSimple ? dimColor : activeText);
+          this.modeLabelSimple.setAlpha(isSimple ? 1 : 0.55);
+          this.modeLabelComplex.setAlpha(isSimple ? 0.55 : 1);
 
           if (!this.modeChipBg) return;
 
@@ -2188,7 +2190,7 @@ class SlotGame extends Phaser.Scene {
           const offsetX = isSimple ? -half : half;
 
           this.modeChipBg.clear();
-          this.modeChipBg.fillStyle(UI.activeFill, 0.95);
+          this.modeChipBg.fillStyle(0xffd700, 0.96);
           this.modeChipBg.fillRoundedRect(
             offsetX - chipW / 2,
             -chipH / 2,
@@ -2196,7 +2198,7 @@ class SlotGame extends Phaser.Scene {
             chipH,
             chipR,
           );
-          this.modeChipBg.lineStyle(1, UI.gold, 0.9);
+          this.modeChipBg.lineStyle(1.4, 0xfff3c4, 0.95);
           this.modeChipBg.strokeRoundedRect(
             offsetX - chipW / 2,
             -chipH / 2,
@@ -2213,13 +2215,15 @@ class SlotGame extends Phaser.Scene {
           this.focusHideGroup.forEach((obj) => {
             if (obj) obj.setVisible(!this.focusMode);
           });
-          // 面板可见时开启全屏收起热区
           if (this.dockDismissZone) {
             this.dockDismissZone.setVisible(!this.focusMode);
             if (!this.focusMode) this.dockDismissZone.setInteractive();
             else this.dockDismissZone.disableInteractive();
           }
           this.refreshModeLabel();
+          if (!silent && !this.focusMode && typeof this.setMessage === "function") {
+            this.setMessage("点击空白处可关闭", 16);
+          }
         };
 
         SlotGame.prototype.updateSpeedButtons = function() {
