@@ -63,7 +63,17 @@ body {
   justify-content: center;
   -webkit-align-items: center;
   align-items: center;
-  transition: width 0.28s ease, height 0.28s ease;
+  transform-origin: center center;
+  transition:
+    width 0.28s ease,
+    height 0.28s ease,
+    transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.32s ease;
+}
+
+#game.orient-switching {
+  transform: scale(0.96);
+  opacity: 0.85;
 }
 
 #game canvas {
@@ -91,46 +101,23 @@ body {
   }
 }
 
-/* 横竖屏卷帘过渡：上下对开 + 淡入淡出 */
-#orient-curtain {
+/* 横竖屏柔和遮罩过渡：全屏淡入淡出 + 轻微缩放 */
+#orient-overlay {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-#orient-curtain.active {
-  visibility: visible;
-  pointer-events: auto;
-}
-
-#orient-curtain .curtain-half {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 50%;
   background: #030202;
   opacity: 0;
-  will-change: transform, opacity;
+  visibility: hidden;
+  pointer-events: none;
+  will-change: opacity;
   transition:
-    transform 0.4s cubic-bezier(0.65, 0, 0.35, 1),
-    opacity 0.32s ease;
+    opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0.32s;
 }
 
-#orient-curtain .curtain-top {
-  top: 0;
-  transform: scaleY(0);
-  transform-origin: top center;
-}
-
-#orient-curtain .curtain-bot {
-  bottom: 0;
-  transform: scaleY(0);
-  transform-origin: bottom center;
-}
-
-#orient-curtain.active .curtain-half {
-  transform: scaleY(1);
+#orient-overlay.active {
   opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }

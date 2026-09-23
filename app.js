@@ -1,4 +1,4 @@
-/* 启动 Phaser + 横竖屏卷帘切换 + 音频解锁 */
+/* 启动 Phaser + 横竖屏柔和遮罩切换 + 音频解锁 */
 
 (function bootstrapGame() {
   applyLayout(detectOrientationKey());
@@ -91,33 +91,44 @@
   let currentKey = LAYOUT.key;
   let switching = false;
 
-  const CURTAIN_MS = 400;
+  const OVERLAY_IN_MS = 300;
+  const OVERLAY_HOLD_MS = 100;
+  const OVERLAY_OUT_MS = 380;
 
-  function ensureCurtain() {
-    let el = document.getElementById("orient-curtain");
+  function ensureOverlay() {
+    let el = document.getElementById("orient-overlay");
     if (el) return el;
     el = document.createElement("div");
-    el.id = "orient-curtain";
-    el.innerHTML =
-      '<div class="curtain-half curtain-top"></div><div class="curtain-half curtain-bot"></div>';
+    el.id = "orient-overlay";
     document.body.appendChild(el);
     return el;
   }
 
-  function curtainClose(done) {
-    const el = ensureCurtain();
+  function overlayClose(done) {
+    const el = ensureOverlay();
+    const gameEl = document.getElementById("game");
+    if (gameEl) gameEl.classList.add("orient-switching");
+
     el.classList.remove("active");
     void el.offsetWidth;
     el.classList.add("active");
-    setTimeout(done, CURTAIN_MS);
+
+    setTimeout(done, OVERLAY_IN_MS + OVERLAY_HOLD_MS);
   }
 
-  function curtainOpen(done) {
-    const el = ensureCurtain();
+  function overlayOpen(done) {
+    const el = ensureOverlay();
+    const gameEl = document.getElementById("game");
+
     el.classList.remove("active");
+
+    setTimeout(function () {
+      if (gameEl) gameEl.classList.remove("orient-switching");
+    }, 40);
+
     setTimeout(function () {
       if (typeof done === "function") done();
-    }, CURTAIN_MS);
+    }, OVERLAY_OUT_MS);
   }
 
   function forceViewportCenter() {
@@ -193,7 +204,7 @@
     switching = true;
     currentKey = key;
 
-    curtainClose(function () {
+    overlayClose(function () {
       applyLayout(key);
       try {
         if (typeof sc.saveGameState === "function") sc.saveGameState(true);
@@ -210,10 +221,13 @@
 
       setTimeout(function () {
         multiPassRefresh();
-        curtainOpen(function () {
-          switching = false;
+        // 等布局稳定一帧再打开遮罩
+        requestAnimationFrame(function () {
+          overlayOpen(function () {
+            switching = false;
+          });
         });
-      }, 50);
+      }, 80);
     });
   }
 
