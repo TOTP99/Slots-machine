@@ -1,4 +1,4 @@
-/* 启动 Phaser + 横竖屏旋转飞走切换 + 音频解锁 */
+/* 启动 Phaser + 横竖屏旋转缩小飞走切换 + 音频解锁 */
 
 (function bootstrapGame() {
   applyLayout(detectOrientationKey());
@@ -91,10 +91,10 @@
   let currentKey = LAYOUT.key;
   let switching = false;
 
-  // 飞走 420ms + 缓冲 80ms；飞回约 420ms
-  const FLY_OUT_MS = 420;
-  const HOLD_MS = 80;
-  const FLY_IN_MS = 420;
+  // 旧图缩小+逆时针180° ≈ 550ms；新图放大+再逆时针180° ≈ 550ms
+  const FLY_OUT_MS = 550;
+  const HOLD_MS = 70;
+  const FLY_IN_MS = 550;
 
   function ensureOverlay() {
     let el = document.getElementById("orient-overlay");
@@ -109,15 +109,16 @@
     const el = ensureOverlay();
     const gameEl = document.getElementById("game");
 
-    // 遮罩稍晚一点再完全盖住，让旋转飞走过程可见
+    // 后半段再盖遮罩，前半段让旋转缩小可见
     el.classList.remove("active");
     void el.offsetWidth;
     setTimeout(function () {
       el.classList.add("active");
-    }, 180);
+    }, Math.round(FLY_OUT_MS * 0.55));
 
     if (gameEl) {
-      gameEl.classList.remove("orient-in-start");
+      gameEl.classList.remove("orient-in-start", "orient-in-end", "orient-out");
+      void gameEl.offsetWidth;
       gameEl.classList.add("orient-out");
     }
 
@@ -129,21 +130,35 @@
     const gameEl = document.getElementById("game");
 
     if (gameEl) {
-      // 先挂上飞入起点（无过渡），再下一帧去掉以触发飞回动画
-      gameEl.classList.remove("orient-out");
+      // 1) 无过渡挂上起点：极小 + 已转 -180°
+      gameEl.classList.remove("orient-out", "orient-in-end");
       gameEl.classList.add("orient-in-start");
       void gameEl.offsetWidth;
+
+      // 2) 下一帧切到终点类，触发：放大 + 再转 180°（-180 → -360）
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
           gameEl.classList.remove("orient-in-start");
+          gameEl.classList.add("orient-in-end");
         });
       });
     }
 
-    // 遮罩与飞回同步淡出
-    el.classList.remove("active");
+    // 遮罩与飞入同步淡出（稍早一点，让旋转过程可见）
+    setTimeout(function () {
+      el.classList.remove("active");
+    }, 40);
 
     setTimeout(function () {
+      if (gameEl) {
+        // 动画结束后清掉临时类，避免下次 transform 残留
+        gameEl.classList.remove("orient-in-end", "orient-in-start", "orient-out");
+        // 强制回到默认 transform，不触发过渡
+        var prev = gameEl.style.transition;
+        gameEl.style.transition = "none";
+        void gameEl.offsetWidth;
+        gameEl.style.transition = prev || "";
+      }
       if (typeof done === "function") done();
     }, FLY_IN_MS);
   }
@@ -243,7 +258,7 @@
             switching = false;
           });
         });
-      }, 60);
+      }, 50);
     });
   }
 
