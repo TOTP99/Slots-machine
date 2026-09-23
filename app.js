@@ -1,4 +1,4 @@
-/* 启动 Phaser + 横竖屏柔和遮罩切换 + 音频解锁 */
+/* 启动 Phaser + 横竖屏旋转飞走切换 + 音频解锁 */
 
 (function bootstrapGame() {
   applyLayout(detectOrientationKey());
@@ -91,9 +91,10 @@
   let currentKey = LAYOUT.key;
   let switching = false;
 
-  const OVERLAY_IN_MS = 300;
-  const OVERLAY_HOLD_MS = 100;
-  const OVERLAY_OUT_MS = 380;
+  // 飞走 420ms + 缓冲 80ms；飞回约 420ms
+  const FLY_OUT_MS = 420;
+  const HOLD_MS = 80;
+  const FLY_IN_MS = 420;
 
   function ensureOverlay() {
     let el = document.getElementById("orient-overlay");
@@ -104,31 +105,47 @@
     return el;
   }
 
-  function overlayClose(done) {
+  function flyOut(done) {
     const el = ensureOverlay();
     const gameEl = document.getElementById("game");
-    if (gameEl) gameEl.classList.add("orient-switching");
 
+    // 遮罩稍晚一点再完全盖住，让旋转飞走过程可见
     el.classList.remove("active");
     void el.offsetWidth;
-    el.classList.add("active");
+    setTimeout(function () {
+      el.classList.add("active");
+    }, 180);
 
-    setTimeout(done, OVERLAY_IN_MS + OVERLAY_HOLD_MS);
+    if (gameEl) {
+      gameEl.classList.remove("orient-in-start");
+      gameEl.classList.add("orient-out");
+    }
+
+    setTimeout(done, FLY_OUT_MS + HOLD_MS);
   }
 
-  function overlayOpen(done) {
+  function flyIn(done) {
     const el = ensureOverlay();
     const gameEl = document.getElementById("game");
 
-    el.classList.remove("active");
+    if (gameEl) {
+      // 先挂上飞入起点（无过渡），再下一帧去掉以触发飞回动画
+      gameEl.classList.remove("orient-out");
+      gameEl.classList.add("orient-in-start");
+      void gameEl.offsetWidth;
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          gameEl.classList.remove("orient-in-start");
+        });
+      });
+    }
 
-    setTimeout(function () {
-      if (gameEl) gameEl.classList.remove("orient-switching");
-    }, 40);
+    // 遮罩与飞回同步淡出
+    el.classList.remove("active");
 
     setTimeout(function () {
       if (typeof done === "function") done();
-    }, OVERLAY_OUT_MS);
+    }, FLY_IN_MS);
   }
 
   function forceViewportCenter() {
@@ -204,7 +221,7 @@
     switching = true;
     currentKey = key;
 
-    overlayClose(function () {
+    flyOut(function () {
       applyLayout(key);
       try {
         if (typeof sc.saveGameState === "function") sc.saveGameState(true);
@@ -221,13 +238,12 @@
 
       setTimeout(function () {
         multiPassRefresh();
-        // 等布局稳定一帧再打开遮罩
         requestAnimationFrame(function () {
-          overlayOpen(function () {
+          flyIn(function () {
             switching = false;
           });
         });
-      }, 80);
+      }, 60);
     });
   }
 

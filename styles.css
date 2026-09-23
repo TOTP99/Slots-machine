@@ -68,12 +68,21 @@ body {
     width 0.28s ease,
     height 0.28s ease,
     transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.32s ease;
+    opacity 0.36s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, opacity;
 }
 
-#game.orient-switching {
-  transform: scale(0.96);
-  opacity: 0.85;
+/* 飞走：缩小 + 逆时针旋转 + 上移淡出 */
+#game.orient-out {
+  transform: scale(0.88) rotate(-12deg) translateY(-6%);
+  opacity: 0;
+}
+
+/* 飞入起点：缩小 + 顺时针旋转（打开前瞬间挂上，再去掉以触发回正） */
+#game.orient-in-start {
+  transform: scale(0.88) rotate(12deg) translateY(6%);
+  opacity: 0;
+  transition: none;
 }
 
 #game canvas {
@@ -101,7 +110,7 @@ body {
   }
 }
 
-/* 横竖屏柔和遮罩过渡：全屏淡入淡出 + 轻微缩放 */
+/* 遮罩：飞走过程中铺底，避免露白 */
 #orient-overlay {
   position: fixed;
   inset: 0;
@@ -112,8 +121,8 @@ body {
   pointer-events: none;
   will-change: opacity;
   transition:
-    opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1),
-    visibility 0.32s;
+    opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0.28s;
 }
 
 #orient-overlay.active {
