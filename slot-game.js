@@ -2237,17 +2237,25 @@ class SlotGame extends Phaser.Scene {
               const musicCurrentNum =
                 (typeof bgMusic !== "undefined" && bgMusic.currentNum) || 1;
 
-              const payload = JSON.stringify({
-                balance: bal,
-                bet: bet,
-                jackpotValue: jp,
-                lastWin: lw,
-                mode: self.mode,
-                sfxEnabled: !!(self.sfx && self.sfx.enabled),
-                musicEnabled: musicEnabled,
-                musicPlayMode: musicPlayMode,
-                musicCurrentNum: musicCurrentNum,
-              });
+              // 合并写：先读旧档再覆盖已知字段，不吞掉其他项目（如留声机）写入的字段
+              let prev = {};
+              try {
+                const raw = window.localStorage.getItem("wanjin_slot_save");
+                if (raw) prev = JSON.parse(raw) || {};
+              } catch (e) {}
+              const payload = JSON.stringify(
+                Object.assign(prev, {
+                  balance: bal,
+                  bet: bet,
+                  jackpotValue: jp,
+                  lastWin: lw,
+                  mode: self.mode,
+                  sfxEnabled: !!(self.sfx && self.sfx.enabled),
+                  musicEnabled: musicEnabled,
+                  musicPlayMode: musicPlayMode,
+                  musicCurrentNum: musicCurrentNum,
+                }),
+              );
               if (self._lastSavePayload === payload) return;
               self._lastSavePayload = payload;
 

@@ -169,13 +169,6 @@
       if (document.documentElement) document.documentElement.scrollTop = 0;
       if (document.body) document.body.scrollTop = 0;
       const vv = window.visualViewport;
-      if (vv) {
-        const dy = vv.offsetTop || 0;
-        if (dy !== 0) {
-          window.scrollTo(0, dy);
-          window.scrollTo(0, 0);
-        }
-      }
       const h = (vv && vv.height) || window.innerHeight || 0;
       if (h > 0 && document.documentElement) {
         document.documentElement.style.setProperty("--app-vh", h + "px");
