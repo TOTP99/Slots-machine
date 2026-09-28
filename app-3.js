@@ -133,6 +133,52 @@
     }, 420);
   }
 
+  /* ---------- 方案C 快照过渡 ---------- */
+  function takeSnapshot(callback) {
+    try {
+      const g = window.__slotGame;
+      if (g && g.renderer && typeof g.renderer.snapshot === "function") {
+        g.renderer.snapshot(function (image) {
+          callback(image && image.src ? image.src : null);
+        });
+        return;
+      }
+    } catch (e) {}
+    callback(null);
+  }
+
+  function showSnapshot(url, done) {
+    const gameEl = document.getElementById("game");
+    if (!gameEl || !url) { done(); return; }
+    let img = document.getElementById("orient-snapshot");
+    if (!img) {
+      img = document.createElement("img");
+      img.id = "orient-snapshot";
+      img.alt = "";
+      img.draggable = false;
+      gameEl.appendChild(img);
+    }
+    img.src = url;
+    const show = function () {
+      img.classList.add("visible");
+      requestAnimationFrame(function () {
+        requestAnimationFrame(done);
+      });
+    };
+    if (img.complete && img.naturalWidth) show();
+    else { img.onload = show; img.onerror = done; }
+  }
+
+  function hideSnapshot(done) {
+    const img = document.getElementById("orient-snapshot");
+    if (!img) { done(); return; }
+    img.classList.remove("visible");
+    setTimeout(function () {
+      if (img.parentNode) img.parentNode.removeChild(img);
+      done();
+    }, 380);
+  }
+
   function switchLayout(key) {
     if (key === currentKey || switching) return;
 
@@ -158,25 +204,35 @@
     switching = true;
     currentKey = key;
 
-    // 直接硬切，无过渡动画
-    applyLayout(key);
-    try {
-      if (typeof sc.saveGameState === "function") sc.saveGameState(true);
-    } catch (e) {}
-    try {
-      if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {
-        bgMusic.persistProgress();
-      }
-    } catch (e) {}
+    // 方案C：快照盖住 → 背后切换重建（用户不可见）→ 快照淡出露出新画面
+    takeSnapshot(function (snapshotUrl) {
+      showSnapshot(snapshotUrl, function () {
+        applyLayout(key);
+        try {
+          if (typeof sc.saveGameState === "function") sc.saveGameState(true);
+        } catch (e) {}
+        try {
+          if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {
+            bgMusic.persistProgress();
+          }
+        } catch (e) {}
 
-    forceViewportCenter();
-    g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
-    sc.scene.restart();
+        forceViewportCenter();
+        g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
+        sc.scene.restart();
 
-    setTimeout(function () {
-      multiPassRefresh();
-      switching = false;
-    }, 50);
+        setTimeout(function () {
+          multiPassRefresh();
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              hideSnapshot(function () {
+                switching = false;
+              });
+            });
+          });
+        }, 120);
+      });
+    });
   }
 
   function scheduleRefresh() {
