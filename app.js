@@ -133,50 +133,36 @@
     }, 420);
   }
 
-  /* ---------- 方案C 快照过渡 ---------- */
-  function takeSnapshot(callback) {
-    try {
-      const g = window.__slotGame;
-      if (g && g.renderer && typeof g.renderer.snapshot === "function") {
-        g.renderer.snapshot(function (image) {
-          callback(image && image.src ? image.src : null);
-        });
-        return;
-      }
-    } catch (e) {}
-    callback(null);
-  }
-
-  function showSnapshot(url, done) {
+  /* ---------- 转屏过渡：旧屏放大淡出 → 新屏由大到小淡入 ---------- */
+  function zoomFadeOut(done) {
     const gameEl = document.getElementById("game");
-    if (!gameEl || !url) { done(); return; }
-    let img = document.getElementById("orient-snapshot");
-    if (!img) {
-      img = document.createElement("img");
-      img.id = "orient-snapshot";
-      img.alt = "";
-      img.draggable = false;
-      gameEl.appendChild(img);
+    if (gameEl) {
+      gameEl.classList.remove("zoom-fade-in-start", "zoom-fade-in-end");
+      void gameEl.offsetWidth;
+      gameEl.classList.add("zoom-fade-out");
     }
-    img.src = url;
-    const show = function () {
-      img.classList.add("visible");
-      requestAnimationFrame(function () {
-        requestAnimationFrame(done);
-      });
-    };
-    if (img.complete && img.naturalWidth) show();
-    else { img.onload = show; img.onerror = done; }
+    setTimeout(done, 480);
   }
 
-  function hideSnapshot(done) {
-    const img = document.getElementById("orient-snapshot");
-    if (!img) { done(); return; }
-    img.classList.remove("visible");
+  function zoomFadeIn(done) {
+    const gameEl = document.getElementById("game");
+    if (gameEl) {
+      gameEl.classList.remove("zoom-fade-out");
+      gameEl.classList.add("zoom-fade-in-start");
+      void gameEl.offsetWidth;
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          gameEl.classList.remove("zoom-fade-in-start");
+          gameEl.classList.add("zoom-fade-in-end");
+        });
+      });
+    }
     setTimeout(function () {
-      if (img.parentNode) img.parentNode.removeChild(img);
-      done();
-    }, 380);
+      if (gameEl) {
+        gameEl.classList.remove("zoom-fade-in-end", "zoom-fade-in-start", "zoom-fade-out");
+      }
+      if (typeof done === "function") done();
+    }, 500);
   }
 
   function switchLayout(key) {
@@ -204,34 +190,28 @@
     switching = true;
     currentKey = key;
 
-    // 方案C：快照盖住 → 背后切换重建（用户不可见）→ 快照淡出露出新画面
-    takeSnapshot(function (snapshotUrl) {
-      showSnapshot(snapshotUrl, function () {
-        applyLayout(key);
-        try {
-          if (typeof sc.saveGameState === "function") sc.saveGameState(true);
-        } catch (e) {}
-        try {
-          if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {
-            bgMusic.persistProgress();
-          }
-        } catch (e) {}
+    // 旧屏放大淡出 → 切换重建 → 新屏由大到小淡入
+    zoomFadeOut(function () {
+      applyLayout(key);
+      try {
+        if (typeof sc.saveGameState === "function") sc.saveGameState(true);
+      } catch (e) {}
+      try {
+        if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {
+          bgMusic.persistProgress();
+        }
+      } catch (e) {}
 
-        forceViewportCenter();
-        g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
-        sc.scene.restart();
+      forceViewportCenter();
+      g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
+      sc.scene.restart();
 
-        setTimeout(function () {
-          multiPassRefresh();
-          requestAnimationFrame(function () {
-            requestAnimationFrame(function () {
-              hideSnapshot(function () {
-                switching = false;
-              });
-            });
-          });
-        }, 120);
-      });
+      setTimeout(function () {
+        multiPassRefresh();
+        zoomFadeIn(function () {
+          switching = false;
+        });
+      }, 80);
     });
   }
 
