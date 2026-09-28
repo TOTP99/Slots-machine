@@ -100,6 +100,21 @@ body {
   object-fit: contain;
 }
 
+/* 方案C 快照过渡：切换前截取当前画面盖住游戏区，背后做场景重建，用户只看到旧画面淡入新画面 */
+#game { position: relative; }
+#orient-snapshot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+  z-index: 50;
+}
+#orient-snapshot.visible { opacity: 1; }
+
 @media (orientation: portrait) {
   #game {
     width: min(100vw, calc(var(--app-vh, 100dvh) * 2 / 3));
