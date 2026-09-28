@@ -262,7 +262,13 @@ class SlotGame extends Phaser.Scene {
             const iconSize = Math.round(Math.min(L.rowH, L.reelWindows[0][1] - L.reelWindows[0][0]) * 0.78);
 
             for (let i = -N; i <= N; i++) {
-              const symbol = Phaser.Utils.Array.GetRandom(SYMBOLS);
+              // 中间位置（i=0）用存档恢复的符号，其他位置随机
+              let symbol;
+              if (i === 0 && this._savedReelSymbols && this._savedReelSymbols[reelIndex]) {
+                symbol = SYMBOLS.find((s) => s.key === this._savedReelSymbols[reelIndex]) || Phaser.Utils.Array.GetRandom(SYMBOLS);
+              } else {
+                symbol = Phaser.Utils.Array.GetRandom(SYMBOLS);
+              }
 
               const bg = this.add
                 .circle(0, i * L.rowH, L.discR, 0x000000, 0.35)
@@ -280,7 +286,7 @@ class SlotGame extends Phaser.Scene {
               frame,
               container,
               items,
-              value: SYMBOLS[reelIndex],
+              value: items[N] ? items[N].symbol : SYMBOLS[reelIndex],
               intervalEvent: null,
               stopped: true,
               forceStopScheduled: false,
@@ -2216,6 +2222,12 @@ class SlotGame extends Phaser.Scene {
             }
             if (saved.mode === "NORMAL" || saved.mode === "FAST") this.mode = saved.mode;
             if (typeof saved.sfxEnabled === "boolean") this.sfx.enabled = saved.sfxEnabled;
+            // 恢复转轴符号：转屏/刷新后保持当时显示的符号不变
+            if (Array.isArray(saved.reelSymbols)) {
+              this._savedReelSymbols = saved.reelSymbols.filter(
+                (k) => typeof k === "string" && SYMBOLS.some((s) => s.key === k)
+              );
+            }
           } catch (err) {
           }
         };
@@ -2254,6 +2266,10 @@ class SlotGame extends Phaser.Scene {
                   musicEnabled: musicEnabled,
                   musicPlayMode: musicPlayMode,
                   musicCurrentNum: musicCurrentNum,
+                  // 保存当前三个转轴显示的符号，转屏/刷新后恢复
+                  reelSymbols: (self.reels || []).map((r) =>
+                    r && r.value && r.value.key ? r.value.key : null
+                  ),
                 }),
               );
               if (self._lastSavePayload === payload) return;

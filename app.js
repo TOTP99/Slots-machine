@@ -92,77 +92,6 @@
   let switching = false;
 
   // 旧图缩小+逆时针180° ≈ 550ms；新图放大+再逆时针180° ≈ 550ms
-  const FLY_OUT_MS = 550;
-  const HOLD_MS = 70;
-  const FLY_IN_MS = 550;
-
-  function ensureOverlay() {
-    let el = document.getElementById("orient-overlay");
-    if (el) return el;
-    el = document.createElement("div");
-    el.id = "orient-overlay";
-    document.body.appendChild(el);
-    return el;
-  }
-
-  function flyOut(done) {
-    const el = ensureOverlay();
-    const gameEl = document.getElementById("game");
-
-    // 后半段再盖遮罩，前半段让旋转缩小可见
-    el.classList.remove("active");
-    void el.offsetWidth;
-    setTimeout(function () {
-      el.classList.add("active");
-    }, Math.round(FLY_OUT_MS * 0.55));
-
-    if (gameEl) {
-      gameEl.classList.remove("orient-in-start", "orient-in-end", "orient-out");
-      void gameEl.offsetWidth;
-      gameEl.classList.add("orient-out");
-    }
-
-    setTimeout(done, FLY_OUT_MS + HOLD_MS);
-  }
-
-  function flyIn(done) {
-    const el = ensureOverlay();
-    const gameEl = document.getElementById("game");
-
-    if (gameEl) {
-      // 1) 无过渡挂上起点：极小 + 已转 -180°
-      gameEl.classList.remove("orient-out", "orient-in-end");
-      gameEl.classList.add("orient-in-start");
-      void gameEl.offsetWidth;
-
-      // 2) 下一帧切到终点类，触发：放大 + 再转 180°（-180 → -360）
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          gameEl.classList.remove("orient-in-start");
-          gameEl.classList.add("orient-in-end");
-        });
-      });
-    }
-
-    // 遮罩与飞入同步淡出（稍早一点，让旋转过程可见）
-    setTimeout(function () {
-      el.classList.remove("active");
-    }, 40);
-
-    setTimeout(function () {
-      if (gameEl) {
-        // 动画结束后清掉临时类，避免下次 transform 残留
-        gameEl.classList.remove("orient-in-end", "orient-in-start", "orient-out");
-        // 强制回到默认 transform，不触发过渡
-        var prev = gameEl.style.transition;
-        gameEl.style.transition = "none";
-        void gameEl.offsetWidth;
-        gameEl.style.transition = prev || "";
-      }
-      if (typeof done === "function") done();
-    }, FLY_IN_MS);
-  }
-
   function forceViewportCenter() {
     try {
       window.scrollTo(0, 0);
@@ -204,6 +133,52 @@
     }, 420);
   }
 
+  /* ---------- 方案C 快照过渡 ---------- */
+  function takeSnapshot(callback) {
+    try {
+      const g = window.__slotGame;
+      if (g && g.renderer && typeof g.renderer.snapshot === "function") {
+        g.renderer.snapshot(function (image) {
+          callback(image && image.src ? image.src : null);
+        });
+        return;
+      }
+    } catch (e) {}
+    callback(null);
+  }
+
+  function showSnapshot(url, done) {
+    const gameEl = document.getElementById("game");
+    if (!gameEl || !url) { done(); return; }
+    let img = document.getElementById("orient-snapshot");
+    if (!img) {
+      img = document.createElement("img");
+      img.id = "orient-snapshot";
+      img.alt = "";
+      img.draggable = false;
+      gameEl.appendChild(img);
+    }
+    img.src = url;
+    const show = function () {
+      img.classList.add("visible");
+      requestAnimationFrame(function () {
+        requestAnimationFrame(done);
+      });
+    };
+    if (img.complete && img.naturalWidth) show();
+    else { img.onload = show; img.onerror = done; }
+  }
+
+  function hideSnapshot(done) {
+    const img = document.getElementById("orient-snapshot");
+    if (!img) { done(); return; }
+    img.classList.remove("visible");
+    setTimeout(function () {
+      if (img.parentNode) img.parentNode.removeChild(img);
+      done();
+    }, 380);
+  }
+
   function switchLayout(key) {
     if (key === currentKey || switching) return;
 
@@ -229,29 +204,34 @@
     switching = true;
     currentKey = key;
 
-    flyOut(function () {
-      applyLayout(key);
-      try {
-        if (typeof sc.saveGameState === "function") sc.saveGameState(true);
-      } catch (e) {}
-      try {
-        if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {
-          bgMusic.persistProgress();
-        }
-      } catch (e) {}
+    // 方案C：快照盖住 → 背后切换重建（用户不可见）→ 快照淡出露出新画面
+    takeSnapshot(function (snapshotUrl) {
+      showSnapshot(snapshotUrl, function () {
+        applyLayout(key);
+        try {
+          if (typeof sc.saveGameState === "function") sc.saveGameState(true);
+        } catch (e) {}
+        try {
+          if (typeof bgMusic !== "undefined" && typeof bgMusic.persistProgress === "function") {
+            bgMusic.persistProgress();
+          }
+        } catch (e) {}
 
-      forceViewportCenter();
-      g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
-      sc.scene.restart();
+        forceViewportCenter();
+        g.scale.setGameSize(LAYOUT.width, LAYOUT.height);
+        sc.scene.restart();
 
-      setTimeout(function () {
-        multiPassRefresh();
-        requestAnimationFrame(function () {
-          flyIn(function () {
-            switching = false;
+        setTimeout(function () {
+          multiPassRefresh();
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              hideSnapshot(function () {
+                switching = false;
+              });
+            });
           });
-        });
-      }, 50);
+        }, 120);
+      });
     });
   }
 
