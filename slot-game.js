@@ -111,12 +111,6 @@ class SlotGame extends Phaser.Scene {
 
         SlotGame.prototype.createHeader = function() {
           const J = LAYOUT.jackpot;
-          const isPortrait = LAYOUT.key === "portrait";
-
-          if (!isPortrait) {
-            const pill = this.add.graphics().setPosition(J.x, J.y).setDepth(12);
-            this.drawGradientPanel(pill, J.w, J.h, J.h / 2, 0x0a1838, 0x040a1c, 0.82, UI.neon, 2);
-          }
 
           this.createJackpotSparkle(J.x, J.y, J.w - 60, J.h);
 
