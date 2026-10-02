@@ -26,6 +26,7 @@ const LAYOUT_PRESETS = {
     k: 1.6,
     bgKey: "bg_landscape",
     bgFile: "assets/royale_landscape.webp",
+    bgDim: 0.5,
     ballKey: "ball_landscape",
     ballFile: "assets/lever_ball_landscape.png",
     shaftKey: "shaft_landscape",
@@ -47,8 +48,6 @@ const LAYOUT_PRESETS = {
       labelFont: 20, valueFont: 34, valueMinFont: 20, valueMaxW: 210, arrowDx: 108,
     },
 
-    paytableX: 112, paytableY: 280, paytableW: 170, paytableH: 237,
-    dock: { x: 230, y: 530, k: 1.85 },
     coinButton: { x: 1445, y: 915, r: 85 },
     modalScale: 1.65,
 
@@ -69,6 +68,7 @@ const LAYOUT_PRESETS = {
     k: 1.5,
     bgKey: "bg_portrait",
     bgFile: "assets/royale_portrait.webp",
+    bgDim: 1,
     ballKey: "ball_portrait",
     ballFile: "assets/lever_ball_portrait.png",
     shaftKey: "shaft_portrait",
@@ -91,8 +91,6 @@ const LAYOUT_PRESETS = {
       labelFont: 22, valueFont: 36, valueMinFont: 20, valueMaxW: 190, arrowDx: 100,
     },
 
-    paytableX: 112, paytableY: 280, paytableW: 170, paytableH: 237,
-    dock: { x: 136, y: 720, k: 1.6 },
     coinButton: { x: 875, y: 1275, r: 77 },
     modalScale: 1.55,
 

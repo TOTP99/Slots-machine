@@ -29,9 +29,6 @@ class SlotGame extends Phaser.Scene {
           this.stoppedReelsCount = 0;
           this.sfx = new SoundFX();
 
-          this.focusMode = false;
-          this.focusHideGroup = [];
-
           this.speedSettings = {
             NORMAL: { duration: 1700, interval: 40, step: 18 },
             FAST: { duration: 1000, interval: 22, step: 20 },
@@ -40,8 +37,6 @@ class SlotGame extends Phaser.Scene {
 
         init() {
           this.reels = [];
-          this.focusHideGroup = [];
-          this.focusMode = false;
           this.isSpinning = false;
           this.stopRequested = false;
           this.inputLocked = false;
@@ -67,7 +62,6 @@ class SlotGame extends Phaser.Scene {
           this.createBackdrop();
           this.createHeader();
           this.loadGameState();
-          this.createPaytableButton();
           this.createMachine();
           this.createReels();
           this.createBottomPanels();
@@ -75,14 +69,16 @@ class SlotGame extends Phaser.Scene {
           this.createSettingsModal();
           this.createKeyboardControls();
           this.createAmbientAnimations();
-          this.toggleFocusMode(true);
           this.updateDisplay();
         }
 
 }
 
         SlotGame.prototype.createBackdrop = function() {
-          this.add.image(0, 0, LAYOUT.bgKey).setOrigin(0).setDepth(10);
+          const bg = this.add.image(0, 0, LAYOUT.bgKey).setOrigin(0).setDepth(10);
+          // 横屏：背景淡出，老虎机（转轴/霓虹框/UI）单独突出；
+          // 转轴在背景图透明镂空处、上层 UI 不受影响，圆形按键保持原样
+          bg.setAlpha(LAYOUT.bgDim !== undefined ? LAYOUT.bgDim : 1);
         };
 
         SlotGame.prototype.shadeColor = function(hex, percent) {
@@ -376,218 +372,9 @@ class SlotGame extends Phaser.Scene {
             .setDepth(13);
         };
 
-        SlotGame.prototype.createPaytableButton = function() {
-          const _dockStart = this.focusHideGroup.length;
-          const x = LAYOUT.paytableX;
-          const y = LAYOUT.paytableY;
-          const w = LAYOUT.paytableW;
-          const h = LAYOUT.paytableH;
-
-          // 赌场风面板：酒红丝绒底 + 双层金边 + 四角金点
-          const dockPanel = this.add.graphics().setPosition(x, y);
-          dockPanel.fillGradientStyle(0x2a0a14, 0x2a0a14, 0x0c060a, 0x0c060a, 0.96);
-          dockPanel.fillRoundedRect(-w / 2, -h / 2, w, h, 14);
-          dockPanel.lineStyle(2, 0xffd700, 0.95);
-          dockPanel.strokeRoundedRect(-w / 2, -h / 2, w, h, 14);
-          dockPanel.lineStyle(1, 0xc9a227, 0.65);
-          dockPanel.strokeRoundedRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 11);
-          const cdot = (ox, oy) => {
-            dockPanel.fillStyle(0xffd700, 0.85);
-            dockPanel.fillCircle(ox, oy, 2.5);
-          };
-          const inset = 10;
-          cdot(-w / 2 + inset, -h / 2 + inset);
-          cdot(w / 2 - inset, -h / 2 + inset);
-          cdot(-w / 2 + inset, h / 2 - inset);
-          cdot(w / 2 - inset, h / 2 - inset);
-          this.focusHideGroup.push(dockPanel);
-
-          const iconFont = 50;
-          const iconHalf = iconFont * 0.55;
-          const topSafe = 14;
-          const frameH = 52;
-          const bottomSafe = 14;
-          const SPACING_SCALE = 0.75;
-          const REFERENCE_PANEL_H = 306;
-          const fullContentSpan = REFERENCE_PANEL_H - topSafe - bottomSafe - 2;
-          const contentSpan = fullContentSpan * SPACING_SCALE;
-          const contentTop = y - contentSpan / 2;
-          const contentBottom = y + contentSpan / 2;
-
-          const micY = contentTop + iconHalf;
-          const btnCenterY = contentBottom - frameH / 2;
-          const midTop = micY + iconHalf + 10 * SPACING_SCALE;
-          const midBottom = btnCenterY - frameH / 2 - 10 * SPACING_SCALE;
-          const midSpan = Math.max(midBottom - midTop, 1);
-          const tY = midTop + midSpan * 0.32;
-          const trackY = midTop + midSpan * 0.72;
-
-          const micIcon = this.add
-            .text(x, micY, "🎏", { fontSize: iconFont + "px" })
-            .setOrigin(0.5);
-          this.focusHideGroup.push(micIcon);
-
-          const ctrlGap = Math.min(50, w * 0.27);
-
-          const hitPad = 44; // 加大热区，横屏更好点
-          const bindHit = (tx, ty, labelObj, onDown) => {
-            const hit = this.add
-              .rectangle(tx, ty, hitPad, hitPad, 0x000000, 0.001)
-              .setInteractive({ useHandCursor: true });
-            hit.on("pointerdown", onDown);
-            hit.on("pointerover", () => labelObj.setScale(1.15));
-            hit.on("pointerout", () => labelObj.setScale(1));
-            this.focusHideGroup.push(hit);
-            return hit;
-          };
-
-          const prevBtn = this.add
-            .text(x - ctrlGap, tY, "◀◀", { fontSize: "22px", fontStyle: "bold", color: "#ffd700" })
-            .setOrigin(0.5);
-          bindHit(x - ctrlGap, tY, prevBtn, () => {
-            this.sfx.click();
-            bgMusic.skipPrev();
-            this.saveGameState();
-          });
-          this.focusHideGroup.push(prevBtn);
-
-          this.sidePlayPauseBtn = this.add
-            .text(x, tY, bgMusic.isPlaying() ? "❚❚" : "▶", { fontSize: "22px", fontStyle: "bold", color: "#ffd700" })
-            .setOrigin(0.5);
-          bindHit(x, tY, this.sidePlayPauseBtn, () => {
-            this.sfx.click();
-            if (bgMusic.isPlaying()) {
-              bgMusic.pause();
-              bgMusic._wantPlay = false;
-              try { localStorage.setItem("bgMusicWasPlaying", "false"); } catch (e) {}
-            } else {
-              bgMusic.play();
-            }
-            this.refreshPlayPauseIcon();
-            this.saveGameState();
-          });
-          this.focusHideGroup.push(this.sidePlayPauseBtn);
-
-          const nextBtn = this.add
-            .text(x + ctrlGap, tY, "▶▶", { fontSize: "22px", fontStyle: "bold", color: "#ffd700" })
-            .setOrigin(0.5);
-          bindHit(x + ctrlGap, tY, nextBtn, () => {
-            this.sfx.click();
-            bgMusic.skipNext();
-            this.saveGameState();
-          });
-          this.focusHideGroup.push(nextBtn);
-
-          this.sideTrackLabel = this.add
-            .text(x, trackY, "01 / 99", {
-              fontSize: "18px",
-              fontStyle: "bold",
-              color: "#ffd700",
-              stroke: "#1a0808",
-              strokeThickness: 2,
-            })
-            .setOrigin(0.5);
-          this.focusHideGroup.push(this.sideTrackLabel);
-          this.refreshTrackLabel();
-          if (typeof bgMusic.onTrackChange === "function") {
-            bgMusic.onTrackChange(() => this.refreshTrackLabel());
-          }
-
-          const frameW = Math.round((w - 24) * 0.9);
-          const frame = this.add.graphics().setPosition(x, btnCenterY);
-          const drawCtrlFrame = (hover) => {
-            frame.clear();
-            frame.fillGradientStyle(
-              hover ? 0x3d1520 : 0x2a0a14,
-              hover ? 0x3d1520 : 0x2a0a14,
-              hover ? 0x1a0a10 : 0x0c060a,
-              hover ? 0x1a0a10 : 0x0c060a,
-              0.95,
-            );
-            frame.fillRoundedRect(-frameW / 2, -frameH / 2, frameW, frameH, 12);
-            frame.lineStyle(hover ? 2.2 : 1.6, 0xffd700, hover ? 1 : 0.9);
-            frame.strokeRoundedRect(-frameW / 2, -frameH / 2, frameW, frameH, 12);
-            frame.lineStyle(1, 0xc9a227, 0.55);
-            frame.strokeRoundedRect(-frameW / 2 + 3, -frameH / 2 + 3, frameW - 6, frameH - 6, 10);
-          };
-          drawCtrlFrame(false);
-          frame.setInteractive(
-            new Phaser.Geom.Rectangle(-frameW / 2, -frameH / 2, frameW, frameH),
-            Phaser.Geom.Rectangle.Contains,
-          );
-          if (frame.input) frame.input.cursor = "pointer";
-
-          const ctrlLabel = this.add
-            .text(x, btnCenterY, "PAYTABLE\nSETTING", {
-              fontSize: "15px",
-              fontStyle: "bold",
-              color: "#ffd700",
-              align: "center",
-              lineSpacing: 4,
-              stroke: "#1a0808",
-              strokeThickness: 1,
-            })
-            .setOrigin(0.5);
-
-          const openCtrl = () => {
-            this.sfx.click();
-            this.toggleSettingsModal(true);
-          };
-          frame.on("pointerdown", openCtrl);
-          frame.on("pointerover", () => {
-            drawCtrlFrame(true);
-            ctrlLabel.setScale(1.05);
-          });
-          frame.on("pointerout", () => {
-            drawCtrlFrame(false);
-            ctrlLabel.setScale(1);
-          });
-          ctrlLabel.setInteractive({ useHandCursor: true });
-          ctrlLabel.on("pointerdown", openCtrl);
-          this.focusHideGroup.push(frame, ctrlLabel);
-
-          const dk = LAYOUT.dock;
-          this.dockContainer = this.wrapInScaledContainer(
-            this.focusHideGroup.slice(_dockStart),
-            x, y, dk.x, dk.y, dk.k, 20,
-          );
-
-          // 点面板外任意处收起左侧栏（显→藏）
-          this.dockDismissZone = this.add
-            .rectangle(LAYOUT.width / 2, LAYOUT.height / 2, LAYOUT.width, LAYOUT.height, 0x000000, 0.001)
-            .setDepth(19)
-            .setInteractive()
-            .setVisible(false);
-          this.dockDismissZone.on("pointerdown", () => {
-            if (!this.focusMode) this.toggleFocusMode();
-          });
-        };
 
         // 把一批已创建的对象装进容器：以 (ox,oy) 为原坐标中心，放大 k 倍后落在 (tx,ty)
-        SlotGame.prototype.wrapInScaledContainer = function(items, ox, oy, tx, ty, k, depth) {
-          const c = this.add.container(tx - ox * k, ty - oy * k).setScale(k).setDepth(depth);
-          const list = items.filter(Boolean);
-          list.forEach((o) => {
-            if (o.type === "Text" && o.setResolution) o.setResolution(Math.min(4, Math.ceil(k * 2)));
-          });
-          c.add(list);
-          return c;
-        };
 
-        SlotGame.prototype.refreshTrackLabel = function() {
-          if (!this.sideTrackLabel) return;
-          const n = bgMusic.currentNum || 1;
-          this.sideTrackLabel.setText(
-            String(n).padStart(2, "0") +
-              " / " +
-              String(BG_MUSIC_MAX).padStart(2, "0"),
-          );
-        };
-
-        SlotGame.prototype.refreshPlayPauseIcon = function() {
-          if (!this.sidePlayPauseBtn) return;
-          this.sidePlayPauseBtn.setText(bgMusic.isPlaying() ? "❚❚" : "▶");
-        };
 
         SlotGame.prototype.createRightControls = function() {
           const L = LAYOUT.lever;
@@ -722,7 +509,14 @@ class SlotGame extends Phaser.Scene {
             .setInteractive({ useHandCursor: true });
 
           this.coinHit.on("pointerover", () => this._drawCoinFace(true));
-          this.coinHit.on("pointerout", () => this._drawCoinFace(false));
+          this.coinHit.on("pointerout", () => {
+            this._drawCoinFace(false);
+            this._cancelCoinPress();
+          });
+          // 点按：播放/停止背景音乐（与 mp3 当前曲目、播放模式同步）
+          // 长按(600ms)：直接打开 paytable/setting 弹窗
+          this._coinPressTimer = null;
+          this._coinLongPressed = false;
           this.coinHit.on("pointerdown", () => {
             this.sfx.click();
             this.tweens.add({
@@ -739,9 +533,51 @@ class SlotGame extends Phaser.Scene {
               yoyo: true,
               ease: "Sine.easeInOut",
             });
-            this._burstCoinRays(x, y);
-            this.toggleFocusMode();
+            this._coinLongPressed = false;
+            this._cancelCoinPress();
+            this._coinPressTimer = setTimeout(() => {
+              this._coinPressTimer = null;
+              this._coinLongPressed = true;
+              this.toggleSettingsModal(true);
+            }, 600);
           });
+          this.coinHit.on("pointerup", () => {
+            const wasTap = !!this._coinPressTimer && !this._coinLongPressed;
+            this._cancelCoinPress();
+            if (wasTap) {
+              this._burstCoinRays(x, y);
+              this.toggleBgMusic();
+            }
+            this._coinLongPressed = false;
+          });
+          this._updateCoinMusicState();
+        };
+
+        SlotGame.prototype._cancelCoinPress = function() {
+          if (this._coinPressTimer) {
+            clearTimeout(this._coinPressTimer);
+            this._coinPressTimer = null;
+          }
+        };
+
+        // 点按金币：播放/停止，与 mp3 当前曲目及播放模式（顺序/随机/单曲）同步
+        SlotGame.prototype.toggleBgMusic = function() {
+          if (typeof bgMusic === "undefined") return;
+          if (bgMusic.isPlaying()) {
+            bgMusic.pause();
+            try { localStorage.setItem("bgMusicWasPlaying", "false"); } catch (e) {}
+          } else {
+            bgMusic.play();
+          }
+          this.saveGameState();
+          this._updateCoinMusicState();
+        };
+
+        // 金币上 ♪ 的亮/暗表示音乐开/关
+        SlotGame.prototype._updateCoinMusicState = function() {
+          if (!this.coinNote) return;
+          const playing = typeof bgMusic !== "undefined" && bgMusic.isPlaying();
+          this.coinNote.setColor(playing ? "#ffd700" : "#1a0a00");
         };
 
         // 赌场筹码外观：外圈色段 + 内环 + 中心圆盘（位置/半径不变）
@@ -751,49 +587,105 @@ class SlotGame extends Phaser.Scene {
           const r = this._coinR || 85;
           g.clear();
 
-          const rimDark = hover ? 0x8b0000 : 0x6b0000;
+          const rimDark = hover ? 0x7a0000 : 0x5c0000;
           const rimLite = hover ? 0xffe27a : 0xffd700;
           const face = hover ? 0xc41e3a : 0xa01830;
           const faceInner = hover ? 0xe8c060 : 0xd4a84b;
           const center = hover ? 0xfff0b0 : 0xf0d070;
           const ink = 0x1a0800;
-          const innerRim = r * 0.78;
+          const spotC = 0xf3e8cf;
 
-          // 外圈交替色段（扇形铺满再盖中心，留出筹码边）
-          const segs = 16;
-          for (let i = 0; i < segs; i++) {
-            const a0 = (Math.PI * 2 * i) / segs - Math.PI / 2;
-            const a1 = (Math.PI * 2 * (i + 1)) / segs - Math.PI / 2;
-            g.fillStyle(i % 2 === 0 ? rimLite : rimDark, 1);
-            g.slice(0, 0, r, a0, a1, false);
-            g.fillPath();
+          // 1) 落地阴影：筹码"浮"起来的关键
+          g.fillStyle(0x000000, 0.26);
+          g.fillEllipse(0, r * 0.94, r * 1.66, r * 0.4);
+          g.fillStyle(0x000000, 0.16);
+          g.fillEllipse(0, r * 0.9, r * 1.4, r * 0.3);
+
+          // 2) 厚度侧面：下错位的深色底，模拟筹码立起的边
+          const thick = Math.max(2, r * 0.035);
+          g.fillStyle(0x2e0704, 1);
+          g.fillCircle(0, thick, r);
+
+          // 3) 外圈底色
+          g.fillStyle(rimDark, 1);
+          g.fillCircle(0, 0, r);
+
+          // 4) 8 个经典边缘点：赌场筹码的标志，每点自带上亮下暗的立体
+          const spots = 8, spotR = r * 0.105, spotDist = r * 0.862;
+          for (let i = 0; i < spots; i++) {
+            const a = (Math.PI * 2 * i) / spots + Math.PI / spots;
+            const sx = Math.cos(a) * spotDist, sy = Math.sin(a) * spotDist;
+            g.fillStyle(spotC, 1);
+            g.fillCircle(sx, sy, spotR);
+            g.fillStyle(0xffffff, 0.5);
+            g.fillCircle(sx - spotR * 0.18, sy - spotR * 0.22, spotR * 0.55);
+            g.fillStyle(0x8a7a5a, 0.45);
+            g.fillCircle(sx + spotR * 0.15, sy + spotR * 0.25, spotR * 0.5);
+            g.lineStyle(1.2, ink, 0.5);
+            g.strokeCircle(sx, sy, spotR);
           }
 
-          // 主盘面（酒红）
+          // 5) 外圈金色细边
+          g.lineStyle(Math.max(2, r * 0.028), rimLite, 0.95);
+          g.strokeCircle(0, 0, r * 0.965);
+
+          // 6) 主盘面
+          const faceR = r * 0.72;
           g.fillStyle(face, 1);
-          g.fillCircle(0, 0, innerRim);
+          g.fillCircle(0, 0, faceR);
 
-          // 金色内环
+          // 7) 穹顶光：偏左上的多层淡白圆，盘面鼓起来的感觉
+          for (let i = 0; i < 5; i++) {
+            const rr = faceR * (0.92 - i * 0.16);
+            if (rr <= 0) break;
+            g.fillStyle(0xffffff, 0.055);
+            g.fillCircle(-faceR * 0.18, -faceR * 0.22, rr);
+          }
+          // 盘面下缘暗角
+          g.lineStyle(faceR * 0.1, 0x400008, 0.35);
+          g.strokeCircle(0, 0, faceR * 0.94);
+
+          // 8) 斜面高光弧（上）与阴影弧（下）
+          g.lineStyle(Math.max(2, r * 0.03), 0xffffff, 0.28);
+          g.beginPath();
+          g.arc(0, 0, faceR * 0.9, Math.PI * 1.15, Math.PI * 1.85, false);
+          g.strokePath();
+          g.lineStyle(Math.max(2, r * 0.035), 0x2a0005, 0.4);
+          g.beginPath();
+          g.arc(0, 0, faceR * 0.9, Math.PI * 0.15, Math.PI * 0.85, false);
+          g.strokePath();
+
+          // 9) 金色内环
           g.lineStyle(Math.max(2, r * 0.045), faceInner, 1);
-          g.strokeCircle(0, 0, r * 0.62);
+          g.strokeCircle(0, 0, r * 0.58);
           g.lineStyle(Math.max(1.2, r * 0.02), ink, 0.55);
-          g.strokeCircle(0, 0, r * 0.62);
+          g.strokeCircle(0, 0, r * 0.58);
 
-          // 中心圆盘
-          g.fillStyle(center, 1);
-          g.fillCircle(0, 0, r * 0.36);
-          g.lineStyle(Math.max(1.5, r * 0.025), ink, 0.85);
-          g.strokeCircle(0, 0, r * 0.36);
-
-          // 环上小点
+          // 10) 环上小金点
           for (let i = 0; i < 8; i++) {
             const a = (Math.PI * 2 * i) / 8 - Math.PI / 2;
             g.fillStyle(rimLite, hover ? 0.95 : 0.8);
-            g.fillCircle(Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62, Math.max(1.5, r * 0.035));
+            g.fillCircle(Math.cos(a) * r * 0.58, Math.sin(a) * r * 0.58, Math.max(1.5, r * 0.032));
           }
 
+          // 11) 中心浮雕圆盘：暗底错位 = 厚度，盘面高光 = 鼓起
+          const cR = r * 0.36;
+          g.fillStyle(0x8a6a20, 1);
+          g.fillCircle(0, cR * 0.1, cR);
+          g.fillStyle(center, 1);
+          g.fillCircle(0, 0, cR);
+          g.fillStyle(0xffffff, 0.32);
+          g.fillCircle(-cR * 0.25, -cR * 0.3, cR * 0.55);
+          g.lineStyle(Math.max(1.5, r * 0.025), ink, 0.85);
+          g.strokeCircle(0, 0, cR);
+          g.lineStyle(1.5, 0xffffff, 0.5);
+          g.beginPath();
+          g.arc(0, 0, cR * 0.92, Math.PI * 1.1, Math.PI * 1.9, false);
+          g.strokePath();
+
+          // 12) 最外圈描边
           g.lineStyle(hover ? 3 : 2.2, ink, 0.95);
-          g.strokeCircle(0, 0, r);
+          g.strokeCircle(0, 0, r * 0.99);
         };
 
         // 通用贴圆弧文字：逐字符旋转摆放，centerAngleDeg=90 是圆心正下方
@@ -2144,22 +2036,6 @@ class SlotGame extends Phaser.Scene {
           });
         };
 
-        SlotGame.prototype.toggleFocusMode = function(silent) {
-          this.focusMode = !this.focusMode;
-          if (!silent) this.sfx.click();
-
-          this.focusHideGroup.forEach((obj) => {
-            if (obj) obj.setVisible(!this.focusMode);
-          });
-          if (this.dockDismissZone) {
-            this.dockDismissZone.setVisible(!this.focusMode);
-            if (!this.focusMode) this.dockDismissZone.setInteractive();
-            else this.dockDismissZone.disableInteractive();
-          }
-          if (!silent && !this.focusMode && typeof this.setMessage === "function") {
-            this.setMessage("点击空白处可关闭", 16);
-          }
-        };
 
         SlotGame.prototype.updateSpeedButtons = function() {
           this.speedButtons.forEach(({ label, btn, txt }) => {
