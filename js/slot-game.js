@@ -381,6 +381,11 @@ class SlotGame extends Phaser.Scene {
             .setDepth(12);
           this._shaftW = this.leverShaft.width;
 
+          this.leverBaseGlow = this.add
+            .circle(L.shaftX, L.baseY - 4, 24, UI.neon, 0.28)
+            .setBlendMode(Phaser.BlendModes.ADD)
+            .setDepth(11.5);
+
           this.leverGlow = this.add
             .circle(L.ballX, L.ballY, L.ballR + 12, UI.neon, 1)
             .setBlendMode(Phaser.BlendModes.ADD)
